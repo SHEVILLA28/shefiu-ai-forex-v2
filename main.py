@@ -2,6 +2,25 @@ import time
 import requests
 from config import BOT_TOKEN, CHAT_ID
 from signals import get_signal
+import os
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"SHFIU AI FOREX V2 is running")
+
+    def log_message(self, format, *args):
+        pass
+
+def start_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), HealthHandler)
+    server.serve_forever()
+
+threading.Thread(target=start_server, daemon=True).start()
 
 PAIRS = [
     "EUR/USD",
