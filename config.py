@@ -1,10 +1,11 @@
+import os
 # ==============================
 # AI FOREX BOT CONFIGURATION
 # ==============================
 
 # Telegram Bot
-BOT_TOKEN = "8948291053:AAHc9gfpCXyvH4wazhj9yv7lU5TbM1DA_Uk"
-CHAT_ID = "1963483127"
+BOT_TOKEN = os.environ.get("BOT_TOKEN")  
+CHAT_ID = os.environ.get("CHAT_ID")
 
 # Trading Settings
 TIMEFRAME = "15m"
