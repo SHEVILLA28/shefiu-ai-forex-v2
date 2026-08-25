@@ -9,8 +9,7 @@ PAIRS = [
     "USD/JPY",
     "USD/CHF",
     "AUD/USD",
-    "XAU/USD",
-]
+    ]
 
 last_signals = {}
 
