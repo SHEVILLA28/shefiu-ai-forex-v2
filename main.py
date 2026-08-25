@@ -1,6 +1,6 @@
 import time
 import requests
-from config import TELEGRAM_TOKEN, CHAT_ID
+from config import BOT_TOKEN, CHAT_ID
 from signals import get_signal
 
 PAIRS = [
@@ -15,7 +15,7 @@ PAIRS = [
 last_signals = {}
 
 def send_telegram(message):
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
     try:
         requests.post(
