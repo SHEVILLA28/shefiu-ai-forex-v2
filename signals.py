@@ -1,351 +1,434 @@
 import os
+import time
 import requests
+import pandas as pd
 from datetime import datetime, timezone
 
-API_KEY = os.getenv("TWELVE_DATA_API_KEY")
+from ta.trend import EMAIndicator, MACD
+from ta.momentum import RSIIndicator
 
 
-def calculate_ema(values, period):
-    if len(values) < period:
-        return None
+# =========================================================
+# SETTINGS
+# =========================================================
 
-    ema = sum(values[:period]) / period
-    multiplier = 2 / (period + 1)
+TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+CHAT_ID = os.getenv("CHAT_ID")
 
-    for price in values[period:]:
-        ema = (price - ema) * multiplier + ema
+# Forex only — NO OTC, NO crypto
+PAIRS = [
+    "EUR/USD",
+    "GBP/USD",
+    "USD/JPY",
+    "AUD/USD",
+    "USD/CAD",
+    "USD/CHF",
+    "NZD/USD",
+]
 
-    return ema
+TIMEFRAME = "5min"
 
+# Start with one pair to protect Twelve Data credits.
+# Change to True later when everything works.
+SCAN_ALL_PAIRS = False
 
-def calculate_rsi(values, period=14):
-    if len(values) <= period:
-        return None
+# How often the bot checks
+CHECK_EVERY_SECONDS = 300
 
-    gains = []
-    losses = []
-
-    for i in range(1, len(values)):
-        change = values[i] - values[i - 1]
-
-        if change > 0:
-            gains.append(change)
-            losses.append(0)
-        else:
-            gains.append(0)
-            losses.append(abs(change))
-
-    avg_gain = sum(gains[:period]) / period
-    avg_loss = sum(losses[:period]) / period
-
-    for i in range(period, len(gains)):
-        avg_gain = ((avg_gain * (period - 1)) + gains[i]) / period
-        avg_loss = ((avg_loss * (period - 1)) + losses[i]) / period
-
-    if avg_loss == 0:
-        return 100.0
-
-    rs = avg_gain / avg_loss
-    return 100 - (100 / (1 + rs))
+last_sent = {}
 
 
-def calculate_macd(values):
-    ema12 = calculate_ema(values, 12)
-    ema26 = calculate_ema(values, 26)
+# =========================================================
+# CHECK SETTINGS
+# =========================================================
 
-    if ema12 is None or ema26 is None:
-        return None, None
+def check_environment():
+    missing = []
 
-    macd_line = ema12 - ema26
+    if not TWELVE_DATA_API_KEY:
+        missing.append("TWELVE_DATA_API_KEY")
 
-    # Approximation of MACD signal line using recent MACD values
-    macd_values = []
+    if not BOT_TOKEN:
+        missing.append("BOT_TOKEN")
 
-    for i in range(26, len(values) + 1):
-        subset = values[:i]
+    if not CHAT_ID:
+        missing.append("CHAT_ID")
 
-        e12 = calculate_ema(subset, 12)
-        e26 = calculate_ema(subset, 26)
+    if missing:
+        print("❌ Missing environment variables:")
+        for item in missing:
+            print("   -", item)
+        return False
 
-        if e12 is not None and e26 is not None:
-            macd_values.append(e12 - e26)
-
-    if len(macd_values) < 9:
-        return macd_line, None
-
-    signal_line = calculate_ema(macd_values, 9)
-
-    return macd_line, signal_line
+    return True
 
 
-def get_signal(pair):
+# =========================================================
+# GET MARKET DATA
+# =========================================================
 
-    if not API_KEY:
-        raise RuntimeError("TWELVE_DATA_API_KEY is missing")
-
-    # Normalize symbols
-    symbol = pair.replace("/", "")
-
-    if symbol == "USDCAD":
-        symbol = "USDCAD"
-
-    if symbol == "XAUUSD":
-        symbol = "XAUUSD"
-
+def get_market_data(symbol):
     url = "https://api.twelvedata.com/time_series"
 
     params = {
         "symbol": symbol,
-        "interval": "5min",
-        "outputsize": 150,
-        "apikey": API_KEY
+        "interval": TIMEFRAME,
+        "outputsize": 200,
+        "apikey": TWELVE_DATA_API_KEY,
     }
 
-    response = requests.get(
-        url,
-        params=params,
-        timeout=15
-    )
-
-    response.raise_for_status()
-
-    data = response.json()
-
-    if data.get("status") == "error":
-        raise RuntimeError(
-            data.get("message", "Twelve Data error")
+    try:
+        response = requests.get(
+            url,
+            params=params,
+            timeout=15
         )
 
-    values = data.get("values", [])
+        data = response.json()
 
-    # No market data
-    if not values:
+    except Exception as e:
+        print(f"❌ Connection error for {symbol}: {e}")
         return None
 
-    # Need enough candles
-    if len(values) < 80:
+    if "values" not in data:
+        print(f"❌ Twelve Data error for {symbol}:")
+        print(data)
         return None
 
-    values = list(reversed(values))
+    df = pd.DataFrame(data["values"])
 
-    closes = []
-    highs = []
-    lows = []
-
-    for candle in values:
-        try:
-            closes.append(float(candle["close"]))
-            highs.append(float(candle["high"]))
-            lows.append(float(candle["low"]))
-        except (KeyError, ValueError, TypeError):
-            continue
-
-    if len(closes) < 80:
+    if len(df) < 60:
+        print(f"⚠️ Not enough candles for {symbol}")
         return None
 
-    # --------------------------------------------------
-    # CHECK MARKET DATA FRESHNESS
-    # --------------------------------------------------
+    df = df.iloc[::-1].reset_index(drop=True)
 
-    latest_time = values[-1].get("datetime")
+    for column in ["open", "high", "low", "close"]:
+        df[column] = pd.to_numeric(
+            df[column],
+            errors="coerce"
+        )
 
-    market_closed = False
+    df = df.dropna()
 
-    if latest_time:
-        try:
-            candle_time = datetime.strptime(
-                latest_time,
-                "%Y-%m-%d %H:%M:%S"
-            )
+    return df
 
-            candle_time = candle_time.replace(tzinfo=timezone.utc)
 
-            now = datetime.now(timezone.utc)
+# =========================================================
+# INDICATORS
+# =========================================================
 
-            age_minutes = (
-                now - candle_time
-            ).total_seconds() / 60
+def calculate_indicators(df):
 
-            # Data older than 30 minutes = do not trade
-            if age_minutes > 30:
-                market_closed = True
+    # EMA
+    df["EMA20"] = EMAIndicator(
+        close=df["close"],
+        window=20
+    ).ema_indicator()
 
-        except Exception:
-            pass
-
-    if market_closed:
-        return {
-            "pair": pair,
-            "signal": "NO TRADE",
-            "entry": None,
-            "take_profit": None,
-            "stop_loss": None,
-            "trend": "MARKET CLOSED",
-            "rsi": 0,
-            "ema50": None,
-            "macd": None,
-            "macd_signal": None,
-            "support": None,
-            "resistance": None,
-            "confidence": 0,
-            "reason": "Market closed or market data is stale"
-        }
-
-    # --------------------------------------------------
-    # INDICATORS
-    # --------------------------------------------------
-
-    price = closes[-1]
-
-    ema50 = calculate_ema(closes, 50)
-    ema12 = calculate_ema(closes, 12)
-    ema26 = calculate_ema(closes, 26)
-
-    rsi = calculate_rsi(closes, 14)
-
-    macd, macd_signal = calculate_macd(closes)
-
-    if (
-        ema50 is None
-        or ema12 is None
-        or ema26 is None
-        or rsi is None
-        or macd is None
-        or macd_signal is None
-    ):
-        return None
-
-    # --------------------------------------------------
-    # SUPPORT / RESISTANCE
-    # --------------------------------------------------
-
-    lookback = 50
-
-    recent_highs = highs[-lookback:]
-    recent_lows = lows[-lookback:]
-
-    resistance = max(recent_highs)
-    support = min(recent_lows)
-
-    # Distance to support/resistance
-    price_range = resistance - support
-
-    if price_range <= 0:
-        return None
-
-    resistance_distance = (
-        resistance - price
-    ) / price_range
-
-    support_distance = (
-        price - support
-    ) / price_range
-
-    # --------------------------------------------------
-    # CONFIRMATION SCORING
-    # --------------------------------------------------
-
-    buy_score = 0
-    sell_score = 0
-
-    # EMA 50 trend
-    if price > ema50:
-        buy_score += 1
-
-    if price < ema50:
-        sell_score += 1
-
-    # EMA 12 / EMA 26
-    if ema12 > ema26:
-        buy_score += 1
-
-    if ema12 < ema26:
-        sell_score += 1
-
-    # MACD
-    if macd > macd_signal:
-        buy_score += 1
-
-    if macd < macd_signal:
-        sell_score += 1
+    df["EMA50"] = EMAIndicator(
+        close=df["close"],
+        window=50
+    ).ema_indicator()
 
     # RSI
-    if 52 <= rsi <= 68:
-        buy_score += 1
+    df["RSI"] = RSIIndicator(
+        close=df["close"],
+        window=14
+    ).rsi()
 
-    if 32 <= rsi <= 48:
-        sell_score += 1
+    # MACD
+    macd = MACD(
+        close=df["close"],
+        window_fast=12,
+        window_slow=26,
+        window_sign=9
+    )
 
-    # Support / resistance location
-    if support_distance > 0.15:
-        buy_score += 1
+    df["MACD"] = macd.macd()
+    df["MACD_SIGNAL"] = macd.macd_signal()
+    df["MACD_HIST"] = macd.macd_diff()
 
-    if resistance_distance > 0.15:
-        sell_score += 1
+    # Support / resistance
+    support = df["low"].tail(20).min()
+    resistance = df["high"].tail(20).max()
 
-    # Avoid buying directly into resistance
-    if resistance_distance < 0.10:
-        buy_score -= 1
+    return df, support, resistance
 
-    # Avoid selling directly into support
-    if support_distance < 0.10:
-        sell_score -= 1
 
-    # --------------------------------------------------
-    # FINAL DECISION
-    # --------------------------------------------------
+# =========================================================
+# SIGNAL ANALYSIS
+# =========================================================
+
+def analyze_pair(symbol):
+
+    df = get_market_data(symbol)
+
+    if df is None:
+        return None
+
+    df, support, resistance = calculate_indicators(df)
+
+    last = df.iloc[-1]
+
+    price = float(last["close"])
+    ema20 = float(last["EMA20"])
+    ema50 = float(last["EMA50"])
+    rsi = float(last["RSI"])
+    macd = float(last["MACD"])
+    macd_signal = float(last["MACD_SIGNAL"])
 
     signal = "NO TRADE"
-    trend = "SIDEWAYS"
+    trend = "Sideways"
     confidence = 0
 
-    if buy_score >= 5 and buy_score > sell_score:
-        signal = "BUY"
-        trend = "BUY"
-        confidence = min(95, 70 + (buy_score - 4) * 5)
+    # -----------------------------------------------------
+    # BUY CONDITIONS
+    # -----------------------------------------------------
 
-    elif sell_score >= 5 and sell_score > buy_score:
-        signal = "SELL"
-        trend = "SELL"
-        confidence = min(95, 70 + (sell_score - 4) * 5)
+    buy_conditions = [
+        ema20 > ema50,
+        price > ema50,
+        50 <= rsi <= 68,
+        macd > macd_signal,
+    ]
 
-    # --------------------------------------------------
-    # RISK LEVELS
-    # --------------------------------------------------
+    # -----------------------------------------------------
+    # SELL CONDITIONS
+    # -----------------------------------------------------
 
-    if signal == "BUY":
-        take_profit = "50 Pips"
-        stop_loss = "25 Pips"
+    sell_conditions = [
+        ema20 < ema50,
+        price < ema50,
+        32 <= rsi <= 50,
+        macd < macd_signal,
+    ]
 
-    elif signal == "SELL":
-        take_profit = "50 Pips"
-        stop_loss = "25 Pips"
+    buy_score = sum(buy_conditions)
+    sell_score = sum(sell_conditions)
+
+    # Require ALL conditions
+    if buy_score == 4:
+
+        signal = "🟢 BUY"
+        trend = "Bullish"
+        confidence = 90
+
+        tp = price + 0.0020
+        sl = price - 0.0010
+
+    elif sell_score == 4:
+
+        signal = "🔴 SELL"
+        trend = "Bearish"
+        confidence = 90
+
+        tp = price - 0.0020
+        sl = price + 0.0010
 
     else:
-        take_profit = None
-        stop_loss = None
 
-    # --------------------------------------------------
-    # RESULT
-    # --------------------------------------------------
+        tp = None
+        sl = None
+
+        if ema20 > ema50:
+            trend = "Bullish"
+
+        elif ema20 < ema50:
+            trend = "Bearish"
 
     return {
-        "pair": pair,
+        "pair": symbol,
         "signal": signal,
-        "entry": round(price, 5),
-        "take_profit": take_profit,
-        "stop_loss": stop_loss,
+        "entry": price,
+        "take_profit": tp,
+        "stop_loss": sl,
+        "support": float(support),
+        "resistance": float(resistance),
         "trend": trend,
-        "rsi": round(rsi, 2),
-        "ema50": round(ema50, 5),
-        "macd": round(macd, 6),
-        "macd_signal": round(macd_signal, 6),
-        "support": round(support, 5),
-        "resistance": round(resistance, 5),
+        "ema20": ema20,
+        "ema50": ema50,
+        "rsi": rsi,
+        "macd": macd,
+        "macd_signal": macd_signal,
         "confidence": confidence,
-        "reason": (
-            "Strong multi-indicator confirmation"
-            if signal != "NO TRADE"
-            else "Conditions are not strong enough"
+    }
+
+
+# =========================================================
+# TELEGRAM
+# =========================================================
+
+def send_telegram(message):
+
+    url = (
+        f"https://api.telegram.org/bot"
+        f"{BOT_TOKEN}/sendMessage"
+    )
+
+    data = {
+        "chat_id": CHAT_ID,
+        "text": message,
+    }
+
+    try:
+
+        response = requests.post(
+            url,
+            data=data,
+            timeout=15
         )
-                               }
+
+        if response.ok:
+            print("✅ Telegram signal sent")
+        else:
+            print("❌ Telegram error:")
+            print(response.text)
+
+    except Exception as e:
+        print("❌ Telegram connection error:", e)
+
+
+# =========================================================
+# FORMAT SIGNAL
+# =========================================================
+
+def format_signal(result):
+
+    return f"""
+📊 FOREX AI SIGNAL
+
+Pair: {result['pair']}
+Timeframe: {TIMEFRAME}
+
+Signal: {result['signal']}
+
+Entry: {result['entry']:.5f}
+
+TP: {result['take_profit']:.5f}
+SL: {result['stop_loss']:.5f}
+
+Support: {result['support']:.5f}
+Resistance: {result['resistance']:.5f}
+
+Trend: {result['trend']}
+
+EMA20: {result['ema20']:.5f}
+EMA50: {result['ema50']:.5f}
+
+RSI: {result['rsi']:.2f}
+
+MACD: {result['macd']:.5f}
+MACD Signal: {result['macd_signal']:.5f}
+
+Confidence: {result['confidence']}%
+
+⚠️ Forex market only
+⏱ 5-minute analysis
+""".strip()
+
+
+# =========================================================
+# SCAN
+# =========================================================
+
+def scan_market():
+
+    if SCAN_ALL_PAIRS:
+        pairs = PAIRS
+    else:
+        pairs = ["EUR/USD"]
+
+    print()
+    print("=" * 50)
+    print("🔎 FOREX AI SCAN")
+    print(datetime.now(timezone.utc).strftime(
+        "%Y-%m-%d %H:%M:%S UTC"
+    ))
+    print("=" * 50)
+
+    for pair in pairs:
+
+        print(f"Checking {pair}...")
+
+        result = analyze_pair(pair)
+
+        if result is None:
+            continue
+
+        print(
+            f"{pair}: {result['signal']} | "
+            f"Trend: {result['trend']} | "
+            f"RSI: {result['rsi']:.2f}"
+        )
+
+        # Only send actual BUY/SELL signals
+        if result["signal"] == "NO TRADE":
+            print("⏳ No trade")
+            continue
+
+        # Prevent duplicate signal
+        signal_key = (
+            f"{result['signal']}_"
+            f"{result['entry']:.5f}"
+        )
+
+        if last_sent.get(pair) == signal_key:
+            print("⏭ Duplicate signal skipped")
+            continue
+
+        last_sent[pair] = signal_key
+
+        message = format_signal(result)
+
+        print(message)
+
+        send_telegram(message)
+
+
+# =========================================================
+# MAIN
+# =========================================================
+
+def main():
+
+    print("🚀 FOREX AI BOT STARTING...")
+    print("Forex only — NO OTC")
+    print("Timeframe:", TIMEFRAME)
+
+    if not check_environment():
+        return
+
+    print("✅ Environment variables found")
+    print("✅ Bot is ready")
+
+    while True:
+
+        try:
+
+            scan_market()
+
+            print()
+            print(
+                f"⏳ Waiting "
+                f"{CHECK_EVERY_SECONDS // 60} minutes..."
+            )
+
+            time.sleep(CHECK_EVERY_SECONDS)
+
+        except KeyboardInterrupt:
+
+            print("🛑 Bot stopped")
+            break
+
+        except Exception as e:
+
+            print("❌ Unexpected error:", e)
+            print("⏳ Retrying in 60 seconds...")
+
+            time.sleep(60)
+
+
+if __name__ == "__main__":
+    main()
