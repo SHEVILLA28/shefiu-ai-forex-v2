@@ -7,6 +7,10 @@ import requests
 import pandas as pd
 
 
+# =========================================================
+# CONFIGURATION
+# =========================================================
+
 API_KEY = os.getenv("TWELVE_DATA_API_KEY")
 
 MIN_CANDLES = 80
@@ -27,7 +31,7 @@ MIN_REQUEST_INTERVAL_SECONDS = 8
 def market_data_request(url, params):
     """
     Request Twelve Data market data while spacing requests
-    apart and retrying temporary 429 rate-limit responses.
+    apart and retrying temporary rate-limit responses.
     """
 
     global LAST_DATA_REQUEST_TIME
@@ -36,15 +40,12 @@ def market_data_request(url, params):
 
         now = time.monotonic()
 
-        elapsed = (
-            now - LAST_DATA_REQUEST_TIME
-        )
+        elapsed = now - LAST_DATA_REQUEST_TIME
 
         if elapsed < MIN_REQUEST_INTERVAL_SECONDS:
 
             time.sleep(
-                MIN_REQUEST_INTERVAL_SECONDS
-                - elapsed
+                MIN_REQUEST_INTERVAL_SECONDS - elapsed
             )
 
         LAST_DATA_REQUEST_TIME = time.monotonic()
@@ -70,13 +71,16 @@ def market_data_request(url, params):
                     )
 
                     try:
+
                         wait_seconds = float(
                             retry_after
                         )
+
                     except (
                         TypeError,
                         ValueError
                     ):
+
                         wait_seconds = 20 * (
                             attempt + 1
                         )
@@ -176,7 +180,7 @@ TIMEFRAME_SETTINGS = {
 
 
 # =========================================================
-# ALLOWED MARKETS - 10 PAIRS
+# ALLOWED MARKETS
 # =========================================================
 
 DISPLAY_PAIRS = {
@@ -311,7 +315,7 @@ def rsi(
         100 / (1 + rs)
     )
 
-    return result.fillna(100)
+    return result.fillna(50)
 
 
 # =========================================================
@@ -817,13 +821,9 @@ def get_signal(
     # =====================================================
 
     if (
-
         price > ema50
-
         and
-
         ema20 > ema50
-
     ):
 
         buy_score += 2
@@ -831,13 +831,9 @@ def get_signal(
         trend = "BUY"
 
     elif (
-
         price < ema50
-
         and
-
         ema20 < ema50
-
     ):
 
         sell_score += 2
@@ -849,21 +845,45 @@ def get_signal(
         trend = "SIDEWAYS"
 
     # =====================================================
-    # RSI
+    # EMA MOMENTUM
     # =====================================================
 
+    previous_ema20 = float(
+        previous["ema20"]
+    )
+
+    previous_ema50 = float(
+        previous["ema50"]
+    )
+
     if (
-
-        50 <= rsi_value < 70
-
+        ema20 > previous_ema20
+        and
+        ema50 >= previous_ema50
     ):
 
         buy_score += 1
 
     elif (
+        ema20 < previous_ema20
+        and
+        ema50 <= previous_ema50
+    ):
 
-        30 < rsi_value <= 50
+        sell_score += 1
 
+    # =====================================================
+    # RSI
+    # =====================================================
+
+    if (
+        52 <= rsi_value < 70
+    ):
+
+        buy_score += 1
+
+    elif (
+        30 < rsi_value <= 48
     ):
 
         sell_score += 1
@@ -881,25 +901,17 @@ def get_signal(
     )
 
     if (
-
         macd_value > macd_signal_value
-
         and
-
         previous_macd <= previous_signal
-
     ):
 
         buy_score += 2
 
     elif (
-
         macd_value < macd_signal_value
-
         and
-
         previous_macd >= previous_signal
-
     ):
 
         sell_score += 2
@@ -933,52 +945,48 @@ def get_signal(
     )
 
     if (
-
         near_support
-
         and
-
         price > support
-
     ):
 
         buy_score += 1
 
     if (
-
         near_resistance
-
         and
-
         price < resistance
-
     ):
 
         sell_score += 1
+
+    # =====================================================
+    # SIGNAL THRESHOLD
+    # =====================================================
+
+    # Reduced from 5 to 4 so the bot can identify
+    # reasonable setups without requiring every
+    # confirmation to occur at the same time.
+
+    minimum_score = 4
 
     # =====================================================
     # STRONG BUY
     # =====================================================
 
     if (
-
-        buy_score >= 5
-
+        buy_score >= minimum_score
         and
-
         buy_score > sell_score
-
         and
-
         not near_resistance
-
     ):
 
         signal = "BUY"
 
         confidence = min(
             95,
-            60 + buy_score * 5
+            55 + buy_score * 7
         )
 
         trend = "BUY"
@@ -988,24 +996,18 @@ def get_signal(
     # =====================================================
 
     elif (
-
-        sell_score >= 5
-
+        sell_score >= minimum_score
         and
-
         sell_score > buy_score
-
         and
-
         not near_support
-
     ):
 
         signal = "SELL"
 
         confidence = min(
             95,
-            60 + sell_score * 5
+            55 + sell_score * 7
         )
 
         trend = "SELL"
@@ -1060,6 +1062,9 @@ def get_signal(
                 resistance,
                 5
             ),
+
+            "confidence": 0,
+
         }
 
     # =====================================================
@@ -1148,8 +1153,8 @@ def get_signal(
         "confidence": confidence,
 
         "reason": (
-            "EMA + RSI + MACD + "
-            "support/resistance confirmations"
+            "EMA + EMA momentum + RSI + "
+            "MACD + support/resistance confirmations"
         ),
 
         "timeframe": timeframe,
