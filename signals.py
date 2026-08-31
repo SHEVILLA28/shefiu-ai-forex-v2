@@ -18,26 +18,36 @@ MAX_DATA_AGE_MINUTES = 15
 
 
 # =========================================================
-# FAST MARKET DATA CACHE
+# MARKET DATA CACHE + RATE LIMIT PROTECTION
 # =========================================================
 
 DATA_REQUEST_LOCK = threading.Lock()
 
 LAST_DATA_REQUEST_TIME = 0.0
 
-# Small protection between real API requests
-MIN_REQUEST_INTERVAL_SECONDS = 3
+# Minimum time between REAL API requests
+MIN_REQUEST_INTERVAL_SECONDS = 10
 
 # Cache downloaded market data
 DATA_CACHE = {}
 
-# Cache lifetime in seconds
-CACHE_SECONDS = 60
+# How long cached data can be reused
+CACHE_SECONDS = 120
 
+# Rate-limit cooldown
+RATE_LIMIT_COOLDOWN_SECONDS = 60
+
+RATE_LIMIT_UNTIL = 0.0
+
+
+# =========================================================
+# MARKET DATA REQUEST
+# =========================================================
 
 def market_data_request(url, params):
 
     global LAST_DATA_REQUEST_TIME
+    global RATE_LIMIT_UNTIL
 
     cache_key = (
         params.get("symbol"),
@@ -66,16 +76,38 @@ def market_data_request(url, params):
 
             return cached_data
 
-
     # =====================================================
     # ONLY ONE REAL API REQUEST AT A TIME
     # =====================================================
 
     with DATA_REQUEST_LOCK:
 
-        # Check cache again after getting the lock
-
         now = time.monotonic()
+
+        # =================================================
+        # CHECK RATE LIMIT COOLDOWN
+        # =================================================
+
+        if now < RATE_LIMIT_UNTIL:
+
+            remaining = RATE_LIMIT_UNTIL - now
+
+            print(
+                f"API cooldown active. "
+                f"{remaining:.0f} seconds remaining."
+            )
+
+            return {
+                "status": "error",
+                "message": (
+                    "Rate limit reached. "
+                    f"Please wait about {int(remaining) + 1} seconds."
+                )
+            }
+
+        # =================================================
+        # CHECK CACHE AGAIN AFTER LOCK
+        # =================================================
 
         cached = DATA_CACHE.get(cache_key)
 
@@ -92,9 +124,8 @@ def market_data_request(url, params):
 
                 return cached_data
 
-
         # =================================================
-        # SHORT REQUEST SPACING
+        # REQUEST SPACING
         # =================================================
 
         elapsed = (
@@ -109,11 +140,11 @@ def market_data_request(url, params):
             )
 
             print(
-                f"Waiting {wait_time:.1f} seconds..."
+                f"Waiting {wait_time:.1f} seconds "
+                f"before next API request..."
             )
 
             time.sleep(wait_time)
-
 
         # =================================================
         # MAKE MARKET REQUEST
@@ -124,78 +155,88 @@ def market_data_request(url, params):
             LAST_DATA_REQUEST_TIME = time.monotonic()
 
             response = requests.get(
-
                 url,
-
                 params=params,
-
-                timeout=12
-
+                timeout=15
             )
 
-
             # =============================================
-            # RATE LIMIT
+            # HTTP RATE LIMIT
             # =============================================
 
             if response.status_code == 429:
+
+                RATE_LIMIT_UNTIL = (
+                    time.monotonic()
+                    + RATE_LIMIT_COOLDOWN_SECONDS
+                )
 
                 print(
                     "Twelve Data rate limit reached."
                 )
 
                 return {
-
                     "status": "error",
-
                     "message": (
                         "Rate limit reached. "
                         "Please wait briefly and try again."
                     )
                 }
 
-
             response.raise_for_status()
 
             data = response.json()
-
 
             # =============================================
             # API ERROR
             # =============================================
 
-            if (
+            if isinstance(data, dict):
 
-                isinstance(data, dict)
+                if data.get("status") == "error":
 
-                and
+                    message = str(
+                        data.get(
+                            "message",
+                            "Market data temporarily unavailable"
+                        )
+                    )
 
-                data.get("status") == "error"
+                    print(
+                        "Market API error:",
+                        message
+                    )
 
-            ):
+                    # Detect rate limit messages returned
+                    # with HTTP 200
+                    message_lower = message.lower()
 
-                print(
-                    "Market API error:",
-                    data.get("message")
-                )
+                    if (
+                        "rate limit" in message_lower
+                        or "too many" in message_lower
+                        or "credits" in message_lower
+                    ):
 
-                return data
+                        RATE_LIMIT_UNTIL = (
+                            time.monotonic()
+                            + RATE_LIMIT_COOLDOWN_SECONDS
+                        )
 
+                    return data
 
             # =============================================
             # CACHE SUCCESSFUL DATA
             # =============================================
 
-            if isinstance(data, dict):
+            if (
+                isinstance(data, dict)
+                and data.get("values")
+            ):
 
                 DATA_CACHE[cache_key] = (
-
                     time.monotonic(),
-
                     data
-
                 )
-
 
             print(
                 f"Fresh market data received: "
@@ -204,7 +245,6 @@ def market_data_request(url, params):
 
             return data
 
-
         except requests.Timeout:
 
             print(
@@ -212,15 +252,12 @@ def market_data_request(url, params):
             )
 
             return {
-
                 "status": "error",
-
                 "message": (
                     "Market request timed out. "
                     "Please try again."
                 )
             }
-
 
         except requests.RequestException as e:
 
@@ -230,15 +267,12 @@ def market_data_request(url, params):
             )
 
             return {
-
                 "status": "error",
-
                 "message": (
                     "Market data request failed. "
                     "Please try again."
                 )
             }
-
 
         except Exception as e:
 
@@ -248,9 +282,7 @@ def market_data_request(url, params):
             )
 
             return {
-
                 "status": "error",
-
                 "message": (
                     "Market data temporarily unavailable."
                 )
@@ -531,24 +563,20 @@ def resample_minutes(df, minutes):
         return df
 
     working = (
-
         df.set_index(
             "datetime"
         )
-
         .sort_index()
     )
 
     rule = f"{minutes}min"
 
     resampled = (
-
         working.resample(
             rule,
             label="right",
             closed="right"
         )
-
         .agg(
             {
                 "open": "first",
@@ -557,9 +585,7 @@ def resample_minutes(df, minutes):
                 "close": "last",
             }
         )
-
         .dropna()
-
         .reset_index()
     )
 
@@ -575,12 +601,20 @@ def get_signal(
     timeframe="5M"
 ):
 
+    # =====================================================
+    # API KEY CHECK
+    # =====================================================
+
     if not API_KEY:
 
         raise RuntimeError(
-            "TWELVE_DATA_API_KEY is missing in Render Environment"
+            "TWELVE_DATA_API_KEY is missing "
+            "in Render Environment"
         )
 
+    # =====================================================
+    # PAIR CHECK
+    # =====================================================
 
     pair = pair.strip().upper()
 
@@ -588,33 +622,29 @@ def get_signal(
         pair
     )
 
-
     if not display_pair:
 
         return no_trade(
-
             pair,
-
             "Pair is not in the allowed market list",
-
             timeframe
         )
 
+    # =====================================================
+    # TIMEFRAME
+    # =====================================================
 
     timeframe = normalize_timeframe(
         timeframe
     )
 
-
     settings = TIMEFRAME_SETTINGS[
         timeframe
     ]
 
-
     minutes = settings[
         "minutes"
     ]
-
 
     # =====================================================
     # MARKET CLOSED CHECK
@@ -624,18 +654,13 @@ def get_signal(
         timezone.utc
     )
 
-
     if now.weekday() >= 5:
 
         return no_trade(
-
             display_pair,
-
             "Market closed",
-
             timeframe
         )
-
 
     # =====================================================
     # TWELVE DATA REQUEST
@@ -645,7 +670,6 @@ def get_signal(
         "https://api.twelvedata.com/"
         "time_series"
     )
-
 
     params = {
 
@@ -662,12 +686,10 @@ def get_signal(
         "apikey": API_KEY,
     }
 
-
     data = market_data_request(
         url,
         params
     )
-
 
     # =====================================================
     # API ERROR
@@ -676,51 +698,39 @@ def get_signal(
     if not isinstance(data, dict):
 
         return no_trade(
-
             display_pair,
-
             "Invalid market data response",
-
             timeframe
         )
-
 
     if data.get("status") == "error":
 
         message = data.get(
-
             "message",
-
             "Market data temporarily unavailable"
         )
 
-
         return no_trade(
-
             display_pair,
-
             f"Market data unavailable: {message}",
-
             timeframe
         )
 
+    # =====================================================
+    # GET MARKET VALUES
+    # =====================================================
 
     rows = data.get(
         "values"
     ) or []
 
-
     if len(rows) < MIN_CANDLES:
 
         return no_trade(
-
             display_pair,
-
             "Not enough market data",
-
             timeframe
         )
-
 
     # =====================================================
     # DATAFRAME
@@ -729,7 +739,6 @@ def get_signal(
     df = pd.DataFrame(
         rows
     )
-
 
     required = {
 
@@ -740,52 +749,36 @@ def get_signal(
         "close",
     }
 
-
     if not required.issubset(
         df.columns
     ):
 
         return no_trade(
-
             display_pair,
-
             "Incomplete market data",
-
             timeframe
         )
 
-
     df["datetime"] = pd.to_datetime(
-
         df["datetime"],
-
         utc=True,
-
         errors="coerce"
     )
 
-
     for column in [
-
         "open",
         "high",
         "low",
         "close",
-
     ]:
 
         df[column] = pd.to_numeric(
-
             df[column],
-
             errors="coerce"
         )
 
-
     df = df.dropna(
-
         subset=[
-
             "datetime",
             "open",
             "high",
@@ -794,28 +787,22 @@ def get_signal(
         ]
     )
 
-
     df = (
-
         df.sort_values(
             "datetime"
         )
-
         .reset_index(
             drop=True
         )
     )
-
 
     # =====================================================
     # BUILD 2M / 3M CANDLES
     # =====================================================
 
     if minutes in {
-
         2,
         3,
-
     }:
 
         df = resample_minutes(
@@ -823,51 +810,35 @@ def get_signal(
             minutes
         )
 
-
     if len(df) < MIN_CANDLES:
 
         return no_trade(
-
             display_pair,
-
             "Not enough valid timeframe candles",
-
             timeframe
         )
-
 
     # =====================================================
     # DATA FRESHNESS
     # =====================================================
 
     latest_time = (
-
         df["datetime"]
-
         .iloc[-1]
-
         .to_pydatetime()
     )
 
-
     age_minutes = (
-
         now - latest_time
-
     ).total_seconds() / 60
-
 
     if age_minutes > MAX_DATA_AGE_MINUTES:
 
         return no_trade(
-
             display_pair,
-
             "Market data is stale / market may be closed",
-
             timeframe
         )
-
 
     # =====================================================
     # PRICE DATA
@@ -879,7 +850,6 @@ def get_signal(
 
     low = df["low"]
 
-
     # =====================================================
     # INDICATORS
     # =====================================================
@@ -889,18 +859,15 @@ def get_signal(
         20
     )
 
-
     df["ema50"] = ema(
         close,
         50
     )
 
-
     df["rsi"] = rsi(
         close,
         14
     )
-
 
     (
         df["macd"],
@@ -911,41 +878,37 @@ def get_signal(
         close
     )
 
-
     latest = df.iloc[-1]
 
     previous = df.iloc[-2]
 
+    # =====================================================
+    # CURRENT VALUES
+    # =====================================================
 
     price = float(
         latest["close"]
     )
 
-
     ema20 = float(
         latest["ema20"]
     )
-
 
     ema50 = float(
         latest["ema50"]
     )
 
-
     rsi_value = float(
         latest["rsi"]
     )
-
 
     macd_value = float(
         latest["macd"]
     )
 
-
     macd_signal_value = float(
         latest["macd_signal"]
     )
-
 
     # =====================================================
     # SUPPORT / RESISTANCE
@@ -955,11 +918,9 @@ def get_signal(
         low.tail(20).min()
     )
 
-
     resistance = float(
         high.tail(20).max()
     )
-
 
     # =====================================================
     # SCORES
@@ -969,45 +930,33 @@ def get_signal(
 
     sell_score = 0
 
-
     # =====================================================
     # TREND
     # =====================================================
 
     if (
-
         price > ema50
-
         and
-
         ema20 > ema50
-
     ):
 
         buy_score += 2
 
         trend = "BUY"
 
-
     elif (
-
         price < ema50
-
         and
-
         ema20 < ema50
-
     ):
 
         sell_score += 2
 
         trend = "SELL"
 
-
     else:
 
         trend = "SIDEWAYS"
-
 
     # =====================================================
     # EMA MOMENTUM
@@ -1017,37 +966,25 @@ def get_signal(
         previous["ema20"]
     )
 
-
     previous_ema50 = float(
         previous["ema50"]
     )
 
-
     if (
-
         ema20 > previous_ema20
-
         and
-
         ema50 >= previous_ema50
-
     ):
 
         buy_score += 1
 
-
     elif (
-
         ema20 < previous_ema20
-
         and
-
         ema50 <= previous_ema50
-
     ):
 
         sell_score += 1
-
 
     # =====================================================
     # RSI
@@ -1057,11 +994,9 @@ def get_signal(
 
         buy_score += 1
 
-
     elif 30 < rsi_value <= 48:
 
         sell_score += 1
-
 
     # =====================================================
     # MACD
@@ -1071,47 +1006,33 @@ def get_signal(
         previous["macd"]
     )
 
-
     previous_signal = float(
         previous["macd_signal"]
     )
 
-
     if (
-
         macd_value > macd_signal_value
-
         and
-
         previous_macd <= previous_signal
-
     ):
 
         buy_score += 2
 
-
     elif (
-
         macd_value < macd_signal_value
-
         and
-
         previous_macd >= previous_signal
-
     ):
 
         sell_score += 2
-
 
     elif macd_value > macd_signal_value:
 
         buy_score += 1
 
-
     elif macd_value < macd_signal_value:
 
         sell_score += 1
-
 
     # =====================================================
     # SUPPORT / RESISTANCE CONFIRMATION
@@ -1121,65 +1042,44 @@ def get_signal(
         display_pair
     )
 
-
     near_support = (
-
         price <= support + (
             15 * pip
         )
     )
 
-
     near_resistance = (
-
         price >= resistance - (
             15 * pip
         )
     )
 
-
     if (
-
         near_support
-
         and
-
         price > support
-
     ):
 
         buy_score += 1
 
-
     if (
-
         near_resistance
-
         and
-
         price < resistance
-
     ):
 
         sell_score += 1
-
 
     # =====================================================
     # BUY SIGNAL
     # =====================================================
 
     if (
-
         buy_score >= 4
-
         and
-
         buy_score > sell_score
-
         and
-
         not near_resistance
-
     ):
 
         signal = "BUY"
@@ -1191,23 +1091,16 @@ def get_signal(
 
         trend = "BUY"
 
-
     # =====================================================
     # SELL SIGNAL
     # =====================================================
 
     elif (
-
         sell_score >= 4
-
         and
-
         sell_score > buy_score
-
         and
-
         not near_support
-
     ):
 
         signal = "SELL"
@@ -1219,7 +1112,6 @@ def get_signal(
 
         trend = "SELL"
 
-
     # =====================================================
     # NO TRADE
     # =====================================================
@@ -1229,11 +1121,8 @@ def get_signal(
         return {
 
             **no_trade(
-
                 display_pair,
-
                 "Indicators are not strongly aligned; WAIT",
-
                 timeframe
             ),
 
@@ -1277,7 +1166,6 @@ def get_signal(
             "confidence": 0,
         }
 
-
     # =====================================================
     # TAKE PROFIT / STOP LOSS
     # =====================================================
@@ -1285,7 +1173,6 @@ def get_signal(
     tp_distance = 50 * pip
 
     sl_distance = 25 * pip
-
 
     if signal == "BUY":
 
@@ -1299,7 +1186,6 @@ def get_signal(
             5
         )
 
-
     else:
 
         take_profit = round(
@@ -1311,7 +1197,6 @@ def get_signal(
             price + sl_distance,
             5
         )
-
 
     # =====================================================
     # FINAL RESULT
@@ -1372,4 +1257,4 @@ def get_signal(
         ),
 
         "timeframe": timeframe,
-    }
+                        }
