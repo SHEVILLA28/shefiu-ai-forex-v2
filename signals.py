@@ -4,12 +4,12 @@ import pandas as pd
 
 
 # =========================================================
-# TWELVE DATA SETTINGS
+# FCSAPI SETTINGS
 # =========================================================
 
-API_KEY = os.getenv("TWELVE_DATA_API_KEY")
+API_KEY = os.getenv("FCSAPI_API_KEY")
 
-BASE_URL = "https://api.twelvedata.com/time_series"
+BASE_URL = "https://api-v4.fcsapi.com/forex/history"
 
 MIN_CANDLES = 100
 
@@ -19,9 +19,20 @@ MIN_CANDLES = 100
 # =========================================================
 
 TIMEFRAME_MAP = {
-    "1M": "1min",
-    "5M": "5min",
+    "1M": "1m",
+    "2M": "2m",
+    "3M": "3m",
+    "5M": "5m",
 }
+
+
+# =========================================================
+# CONVERT PAIR FORMAT
+# =========================================================
+
+def format_symbol(pair):
+
+    return pair.replace("/", "")
 
 
 # =========================================================
@@ -30,50 +41,71 @@ TIMEFRAME_MAP = {
 
 def get_market_data(pair, timeframe):
 
-    interval = TIMEFRAME_MAP.get(
+    if not API_KEY:
+
+        error_message = (
+            "FCSAPI_API_KEY is not configured in Render."
+        )
+
+        print(error_message)
+
+        return None, error_message
+
+
+    period = TIMEFRAME_MAP.get(
         timeframe,
-        "5min"
+        "5m"
     )
 
-    if not API_KEY:
-        print("ERROR: TWELVE_DATA_API_KEY is missing.")
-        return None, "TWELVE_DATA_API_KEY is not configured."
+    symbol = format_symbol(pair)
+
 
     params = {
-        "symbol": pair,
-        "interval": interval,
-        "outputsize": 150,
-        "apikey": API_KEY,
+
+        "symbol": symbol,
+
+        "period": period,
+
+        "length": 150,
+
+        "access_key": API_KEY,
+
     }
+
 
     try:
 
         print(
-            f"Requesting market data: "
-            f"{pair} | {interval}"
+            f"Requesting FCSAPI market data: "
+            f"{symbol} | {period}"
         )
+
 
         response = requests.get(
+
             BASE_URL,
+
             params=params,
+
             timeout=30
+
         )
 
+
         print(
-            f"Twelve Data status code: "
+            f"FCSAPI status code: "
             f"{response.status_code}"
         )
 
+
         data = response.json()
 
-        print(
-            "Twelve Data response:",
-            data if "values" not in data else "Market data received successfully."
-        )
 
     except Exception as e:
 
-        error_message = f"Market request error: {e}"
+        error_message = (
+            f"FCSAPI market request error: {e}"
+        )
 
         print(error_message)
 
@@ -81,62 +113,194 @@ def get_market_data(pair, timeframe):
 
 
     # =====================================================
-    # CHECK TWELVE DATA ERROR
+    # CHECK API RESPONSE
     # =====================================================
 
-    if "values" not in data:
+    if not data.get("status"):
 
         error_message = (
+
+            data.get("msg")
+
+            or
+
             data.get("message")
+
             or
-            data.get("status")
-            or
-            "Twelve Data did not return market values."
+
+            "FCSAPI did not return market data."
+
         )
 
         print(
-            "Twelve Data error:",
+            "FCSAPI error:",
             data
         )
 
         return None, str(error_message)
 
 
+    response_data = data.get("response")
+
+
+    if not response_data:
+
+        error_message = (
+            "FCSAPI returned no market candles."
+        )
+
+        print(error_message)
+
+        return None, error_message
+
+
     # =====================================================
-    # PROCESS DATA
+    # PROCESS MARKET DATA
     # =====================================================
 
     try:
 
-        df = pd.DataFrame(
-            data["values"]
-        )
+        rows = []
 
-        df["datetime"] = pd.to_datetime(
-            df["datetime"]
-        )
 
-        df = df.sort_values(
-            "datetime"
-        )
+        if isinstance(response_data, dict):
+
+            candles = response_data.values()
+
+        elif isinstance(response_data, list):
+
+            candles = response_data
+
+        else:
+
+            return None, (
+                "Unexpected FCSAPI response format."
+            )
+
+
+        for candle in candles:
+
+            if not isinstance(candle, dict):
+
+                continue
+
+
+            rows.append({
+
+                "datetime": candle.get(
+                    "tm"
+                ),
+
+                "timestamp": candle.get(
+                    "t"
+                ),
+
+                "open": candle.get(
+                    "o"
+                ),
+
+                "high": candle.get(
+                    "h"
+                ),
+
+                "low": candle.get(
+                    "l"
+                ),
+
+                "close": candle.get(
+                    "c"
+                ),
+
+            })
+
+
+        df = pd.DataFrame(rows)
+
+
+        if df.empty:
+
+            return None, (
+                "FCSAPI returned empty candle data."
+            )
+
+
+        # =================================================
+        # DATETIME
+        # =================================================
+
+        if "datetime" in df.columns:
+
+            df["datetime"] = pd.to_datetime(
+
+                df["datetime"],
+
+                errors="coerce"
+
+            )
+
+
+        # =================================================
+        # NUMERIC DATA
+        # =================================================
 
         for column in [
+
             "open",
+
             "high",
+
             "low",
+
             "close"
+
         ]:
 
             df[column] = pd.to_numeric(
+
                 df[column],
+
                 errors="coerce"
+
             )
 
-        df = df.dropna()
+
+        df = df.dropna(
+
+            subset=[
+
+                "datetime",
+
+                "open",
+
+                "high",
+
+                "low",
+
+                "close"
+
+            ]
+
+        )
+
+
+        df = df.sort_values(
+
+            "datetime"
+
+        ).reset_index(
+
+            drop=True
+
+        )
+
 
         print(
-            f"Market candles received: {len(df)}"
+
+            f"FCSAPI candles received: "
+            f"{len(df)}"
+
         )
+
 
         return df, None
 
@@ -144,7 +308,9 @@ def get_market_data(pair, timeframe):
     except Exception as e:
 
         error_message = (
-            f"Data processing error: {e}"
+
+            f"FCSAPI data processing error: {e}"
+
         )
 
         print(error_message)
@@ -160,30 +326,50 @@ def calculate_rsi(series, period=14):
 
     delta = series.diff()
 
+
     gain = delta.clip(
+
         lower=0
+
     )
+
 
     loss = -delta.clip(
+
         upper=0
+
     )
+
 
     avg_gain = gain.rolling(
+
         window=period
+
     ).mean()
+
 
     avg_loss = loss.rolling(
+
         window=period
+
     ).mean()
 
+
     rs = avg_gain / avg_loss.replace(
+
         0,
+
         0.000001
+
     )
 
+
     rsi = 100 - (
+
         100 / (1 + rs)
+
     )
+
 
     return rsi
 
@@ -194,22 +380,40 @@ def calculate_rsi(series, period=14):
 
 def get_signal(pair, timeframe="5M"):
 
+
+    # =====================================================
+    # CHECK API KEY
+    # =====================================================
+
     if not API_KEY:
 
         return {
+
             "pair": pair,
+
             "timeframe": timeframe,
+
             "signal": "NO TRADE",
+
             "entry": "N/A",
+
             "take_profit": "N/A",
+
             "stop_loss": "N/A",
+
             "trend": "WAIT",
+
             "rsi": "N/A",
+
             "confidence": 0,
+
             "reason": (
-                "TWELVE_DATA_API_KEY is not configured "
+
+                "FCSAPI_API_KEY is not configured "
                 "in Render."
+
             )
+
         }
 
 
@@ -218,243 +422,18 @@ def get_signal(pair, timeframe="5M"):
     # =====================================================
 
     df, error_message = get_market_data(
+
         pair,
+
         timeframe
+
     )
 
 
     if df is None:
 
         return {
+
             "pair": pair,
+
             "timeframe": timeframe,
-            "signal": "NO TRADE",
-            "entry": "N/A",
-            "take_profit": "N/A",
-            "stop_loss": "N/A",
-            "trend": "WAIT",
-            "rsi": "N/A",
-            "confidence": 0,
-            "reason": (
-                f"Market data error: {error_message}"
-            )
-        }
-
-
-    # =====================================================
-    # CHECK CANDLES
-    # =====================================================
-
-    if len(df) < MIN_CANDLES:
-
-        return {
-            "pair": pair,
-            "timeframe": timeframe,
-            "signal": "NO TRADE",
-            "entry": "N/A",
-            "take_profit": "N/A",
-            "stop_loss": "N/A",
-            "trend": "WAIT",
-            "rsi": "N/A",
-            "confidence": 0,
-            "reason": (
-                f"Not enough market candles. "
-                f"Received {len(df)}, need {MIN_CANDLES}."
-            )
-        }
-
-
-    # =====================================================
-    # INDICATORS
-    # =====================================================
-
-    df["EMA20"] = df["close"].ewm(
-        span=20,
-        adjust=False
-    ).mean()
-
-    df["EMA50"] = df["close"].ewm(
-        span=50,
-        adjust=False
-    ).mean()
-
-    df["RSI"] = calculate_rsi(
-        df["close"],
-        14
-    )
-
-    df["EMA12"] = df["close"].ewm(
-        span=12,
-        adjust=False
-    ).mean()
-
-    df["EMA26"] = df["close"].ewm(
-        span=26,
-        adjust=False
-    ).mean()
-
-    df["MACD"] = (
-        df["EMA12"]
-        -
-        df["EMA26"]
-    )
-
-    df["MACD_SIGNAL"] = df["MACD"].ewm(
-        span=9,
-        adjust=False
-    ).mean()
-
-
-    # =====================================================
-    # LATEST VALUES
-    # =====================================================
-
-    last = df.iloc[-1]
-
-    close = float(last["close"])
-
-    ema20 = float(last["EMA20"])
-
-    ema50 = float(last["EMA50"])
-
-    rsi = float(last["RSI"])
-
-    macd = float(last["MACD"])
-
-    macd_signal = float(last["MACD_SIGNAL"])
-
-    recent_high = float(
-        df["high"].tail(20).max()
-    )
-
-    recent_low = float(
-        df["low"].tail(20).min()
-    )
-
-
-    # =====================================================
-    # TREND
-    # =====================================================
-
-    if ema20 > ema50:
-        trend = "BUY"
-
-    elif ema20 < ema50:
-        trend = "SELL"
-
-    else:
-        trend = "WAIT"
-
-
-    # =====================================================
-    # BUY SIGNAL
-    # =====================================================
-
-    if (
-        trend == "BUY"
-        and macd > macd_signal
-        and rsi >= 50
-        and rsi < 70
-    ):
-
-        risk = close - recent_low
-
-        if risk <= 0:
-            risk = close * 0.002
-
-        stop_loss = close - risk
-
-        take_profit = close + (
-            risk * 1.5
-        )
-
-        return {
-            "pair": pair,
-            "timeframe": timeframe,
-            "signal": "BUY",
-            "entry": round(close, 5),
-            "take_profit": round(
-                take_profit,
-                5
-            ),
-            "stop_loss": round(
-                stop_loss,
-                5
-            ),
-            "trend": trend,
-            "rsi": round(rsi, 2),
-            "confidence": 70,
-            "reason": (
-                "Bullish EMA trend with "
-                "MACD confirmation and "
-                "RSI support."
-            )
-        }
-
-
-    # =====================================================
-    # SELL SIGNAL
-    # =====================================================
-
-    if (
-        trend == "SELL"
-        and macd < macd_signal
-        and rsi <= 50
-        and rsi > 30
-    ):
-
-        risk = recent_high - close
-
-        if risk <= 0:
-            risk = close * 0.002
-
-        stop_loss = close + risk
-
-        take_profit = close - (
-            risk * 1.5
-        )
-
-        return {
-            "pair": pair,
-            "timeframe": timeframe,
-            "signal": "SELL",
-            "entry": round(close, 5),
-            "take_profit": round(
-                take_profit,
-                5
-            ),
-            "stop_loss": round(
-                stop_loss,
-                5
-            ),
-            "trend": trend,
-            "rsi": round(rsi, 2),
-            "confidence": 70,
-            "reason": (
-                "Bearish EMA trend with "
-                "MACD confirmation and "
-                "RSI support."
-            )
-        }
-
-
-    # =====================================================
-    # NO TRADE
-    # =====================================================
-
-    return {
-        "pair": pair,
-        "timeframe": timeframe,
-        "signal": "NO TRADE",
-        "entry": "N/A",
-        "take_profit": "N/A",
-        "stop_loss": "N/A",
-        "trend": trend,
-        "rsi": round(rsi, 2),
-        "confidence": 0,
-        "reason": (
-            "Market conditions do not "
-            "currently meet the BUY or "
-            "SELL confirmation rules."
-        )
-        }
