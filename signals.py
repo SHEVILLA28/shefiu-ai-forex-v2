@@ -7,13 +7,9 @@ import pandas as pd
 # TWELVE DATA SETTINGS
 # =========================================================
 
-API_KEY = os.getenv(
-    "TWELVE_DATA_API_KEY"
-)
+API_KEY = os.getenv("TWELVE_DATA_API_KEY")
 
-BASE_URL = (
-    "https://api.twelvedata.com/time_series"
-)
+BASE_URL = "https://api.twelvedata.com/time_series"
 
 MIN_CANDLES = 100
 
@@ -23,11 +19,8 @@ MIN_CANDLES = 100
 # =========================================================
 
 TIMEFRAME_MAP = {
-
     "1M": "1min",
-
     "5M": "5min",
-
 }
 
 
@@ -35,59 +28,83 @@ TIMEFRAME_MAP = {
 # GET MARKET DATA
 # =========================================================
 
-def get_market_data(
-    pair,
-    timeframe
-):
+def get_market_data(pair, timeframe):
 
     interval = TIMEFRAME_MAP.get(
         timeframe,
         "5min"
     )
 
+    if not API_KEY:
+        print("ERROR: TWELVE_DATA_API_KEY is missing.")
+        return None, "TWELVE_DATA_API_KEY is not configured."
+
     params = {
-
         "symbol": pair,
-
         "interval": interval,
-
         "outputsize": 150,
-
         "apikey": API_KEY,
-
     }
 
     try:
 
+        print(
+            f"Requesting market data: "
+            f"{pair} | {interval}"
+        )
+
         response = requests.get(
-
             BASE_URL,
-
             params=params,
-
             timeout=30
+        )
 
+        print(
+            f"Twelve Data status code: "
+            f"{response.status_code}"
         )
 
         data = response.json()
 
-    except Exception as e:
-
         print(
-            "Market request error:",
-            e
+            "Twelve Data response:",
+            data if "values" not in data else "Market data received successfully."
         )
 
-        return None
+    except Exception as e:
+
+        error_message = f"Market request error: {e}"
+
+        print(error_message)
+
+        return None, error_message
+
+
+    # =====================================================
+    # CHECK TWELVE DATA ERROR
+    # =====================================================
 
     if "values" not in data:
+
+        error_message = (
+            data.get("message")
+            or
+            data.get("status")
+            or
+            "Twelve Data did not return market values."
+        )
 
         print(
             "Twelve Data error:",
             data
         )
 
-        return None
+        return None, str(error_message)
+
+
+    # =====================================================
+    # PROCESS DATA
+    # =====================================================
 
     try:
 
@@ -104,12 +121,10 @@ def get_market_data(
         )
 
         for column in [
-
             "open",
             "high",
             "low",
             "close"
-
         ]:
 
             df[column] = pd.to_numeric(
@@ -119,26 +134,29 @@ def get_market_data(
 
         df = df.dropna()
 
-        return df
+        print(
+            f"Market candles received: {len(df)}"
+        )
+
+        return df, None
+
 
     except Exception as e:
 
-        print(
-            "Data processing error:",
-            e
+        error_message = (
+            f"Data processing error: {e}"
         )
 
-        return None
+        print(error_message)
+
+        return None, error_message
 
 
 # =========================================================
 # CALCULATE RSI
 # =========================================================
 
-def calculate_rsi(
-    series,
-    period=14
-):
+def calculate_rsi(series, period=14):
 
     delta = series.diff()
 
@@ -174,83 +192,81 @@ def calculate_rsi(
 # CALCULATE SIGNAL
 # =========================================================
 
-def get_signal(
-    pair,
-    timeframe="5M"
-):
+def get_signal(pair, timeframe="5M"):
 
     if not API_KEY:
 
         return {
-
             "pair": pair,
-
             "timeframe": timeframe,
-
             "signal": "NO TRADE",
-
+            "entry": "N/A",
+            "take_profit": "N/A",
+            "stop_loss": "N/A",
             "trend": "WAIT",
-
             "rsi": "N/A",
-
             "confidence": 0,
-
             "reason": (
-                "TWELVE_DATA_API_KEY "
-                "is not configured."
+                "TWELVE_DATA_API_KEY is not configured "
+                "in Render."
             )
-
         }
 
-    df = get_market_data(
+
+    # =====================================================
+    # GET MARKET DATA
+    # =====================================================
+
+    df, error_message = get_market_data(
         pair,
         timeframe
     )
 
+
     if df is None:
 
         return {
-
             "pair": pair,
-
             "timeframe": timeframe,
-
             "signal": "NO TRADE",
-
+            "entry": "N/A",
+            "take_profit": "N/A",
+            "stop_loss": "N/A",
             "trend": "WAIT",
-
             "rsi": "N/A",
-
             "confidence": 0,
-
             "reason": (
-                "Could not get market data. "
-                "Check API connection or limit."
+                f"Market data error: {error_message}"
             )
-
         }
+
+
+    # =====================================================
+    # CHECK CANDLES
+    # =====================================================
 
     if len(df) < MIN_CANDLES:
 
         return {
-
             "pair": pair,
-
             "timeframe": timeframe,
-
             "signal": "NO TRADE",
-
+            "entry": "N/A",
+            "take_profit": "N/A",
+            "stop_loss": "N/A",
             "trend": "WAIT",
-
             "rsi": "N/A",
-
             "confidence": 0,
-
             "reason": (
-                "Not enough market candles."
+                f"Not enough market candles. "
+                f"Received {len(df)}, need {MIN_CANDLES}."
             )
-
         }
+
+
+    # =====================================================
+    # INDICATORS
+    # =====================================================
 
     df["EMA20"] = df["close"].ewm(
         span=20,
@@ -288,31 +304,24 @@ def get_signal(
         adjust=False
     ).mean()
 
+
+    # =====================================================
+    # LATEST VALUES
+    # =====================================================
+
     last = df.iloc[-1]
 
-    close = float(
-        last["close"]
-    )
+    close = float(last["close"])
 
-    ema20 = float(
-        last["EMA20"]
-    )
+    ema20 = float(last["EMA20"])
 
-    ema50 = float(
-        last["EMA50"]
-    )
+    ema50 = float(last["EMA50"])
 
-    rsi = float(
-        last["RSI"]
-    )
+    rsi = float(last["RSI"])
 
-    macd = float(
-        last["MACD"]
-    )
+    macd = float(last["MACD"])
 
-    macd_signal = float(
-        last["MACD_SIGNAL"]
-    )
+    macd_signal = float(last["MACD_SIGNAL"])
 
     recent_high = float(
         df["high"].tail(20).max()
@@ -328,15 +337,12 @@ def get_signal(
     # =====================================================
 
     if ema20 > ema50:
-
         trend = "BUY"
 
     elif ema20 < ema50:
-
         trend = "SELL"
 
     else:
-
         trend = "WAIT"
 
 
@@ -345,27 +351,15 @@ def get_signal(
     # =====================================================
 
     if (
-
         trend == "BUY"
-
-        and
-
-        macd > macd_signal
-
-        and
-
-        rsi >= 50
-
-        and
-
-        rsi < 70
-
+        and macd > macd_signal
+        and rsi >= 50
+        and rsi < 70
     ):
 
         risk = close - recent_low
 
         if risk <= 0:
-
             risk = close * 0.002
 
         stop_loss = close - risk
@@ -375,43 +369,26 @@ def get_signal(
         )
 
         return {
-
             "pair": pair,
-
             "timeframe": timeframe,
-
             "signal": "BUY",
-
-            "entry": round(
-                close,
-                5
-            ),
-
+            "entry": round(close, 5),
             "take_profit": round(
                 take_profit,
                 5
             ),
-
             "stop_loss": round(
                 stop_loss,
                 5
             ),
-
             "trend": trend,
-
-            "rsi": round(
-                rsi,
-                2
-            ),
-
+            "rsi": round(rsi, 2),
             "confidence": 70,
-
             "reason": (
                 "Bullish EMA trend with "
                 "MACD confirmation and "
                 "RSI support."
             )
-
         }
 
 
@@ -420,27 +397,15 @@ def get_signal(
     # =====================================================
 
     if (
-
         trend == "SELL"
-
-        and
-
-        macd < macd_signal
-
-        and
-
-        rsi <= 50
-
-        and
-
-        rsi > 30
-
+        and macd < macd_signal
+        and rsi <= 50
+        and rsi > 30
     ):
 
         risk = recent_high - close
 
         if risk <= 0:
-
             risk = close * 0.002
 
         stop_loss = close + risk
@@ -450,43 +415,26 @@ def get_signal(
         )
 
         return {
-
             "pair": pair,
-
             "timeframe": timeframe,
-
             "signal": "SELL",
-
-            "entry": round(
-                close,
-                5
-            ),
-
+            "entry": round(close, 5),
             "take_profit": round(
                 take_profit,
                 5
             ),
-
             "stop_loss": round(
                 stop_loss,
                 5
             ),
-
             "trend": trend,
-
-            "rsi": round(
-                rsi,
-                2
-            ),
-
+            "rsi": round(rsi, 2),
             "confidence": 70,
-
             "reason": (
                 "Bearish EMA trend with "
                 "MACD confirmation and "
                 "RSI support."
             )
-
         }
 
 
@@ -495,32 +443,18 @@ def get_signal(
     # =====================================================
 
     return {
-
         "pair": pair,
-
         "timeframe": timeframe,
-
         "signal": "NO TRADE",
-
         "entry": "N/A",
-
         "take_profit": "N/A",
-
         "stop_loss": "N/A",
-
         "trend": trend,
-
-        "rsi": round(
-            rsi,
-            2
-        ),
-
+        "rsi": round(rsi, 2),
         "confidence": 0,
-
         "reason": (
             "Market conditions do not "
             "currently meet the BUY or "
             "SELL confirmation rules."
         )
-
         }
