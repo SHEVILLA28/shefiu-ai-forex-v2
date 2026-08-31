@@ -7,6 +7,10 @@ import requests
 import pandas as pd
 
 
+# =========================================================
+# CONFIGURATION
+# =========================================================
+
 API_KEY = os.getenv("TWELVE_DATA_API_KEY")
 
 MIN_CANDLES = 80
@@ -14,39 +18,109 @@ MAX_DATA_AGE_MINUTES = 15
 
 
 # =========================================================
-# TWELVE DATA RATE LIMIT PROTECTION
+# TWELVE DATA RATE LIMIT + CACHE PROTECTION
 # =========================================================
 
 DATA_REQUEST_LOCK = threading.Lock()
 
 LAST_DATA_REQUEST_TIME = 0.0
 
-MIN_REQUEST_INTERVAL_SECONDS = 8
+# Minimum time between real API requests
+MIN_REQUEST_INTERVAL_SECONDS = 15
+
+# Cache downloaded market data
+DATA_CACHE = {}
+
+# Cache lifetime in seconds
+CACHE_SECONDS = 60
 
 
 def market_data_request(url, params):
 
     global LAST_DATA_REQUEST_TIME
 
+    cache_key = (
+        params.get("symbol"),
+        params.get("interval"),
+        params.get("outputsize"),
+    )
+
+    now = time.monotonic()
+
+    # =====================================================
+    # CHECK CACHE FIRST
+    # =====================================================
+
+    cached = DATA_CACHE.get(cache_key)
+
+    if cached:
+
+        cached_time, cached_data = cached
+
+        if now - cached_time < CACHE_SECONDS:
+
+            print(
+                f"Using cached data for "
+                f"{params.get('symbol')}"
+            )
+
+            return cached_data
+
+    # =====================================================
+    # ONLY ONE API REQUEST AT A TIME
+    # =====================================================
+
     with DATA_REQUEST_LOCK:
 
+        # Check cache again after getting the lock
         now = time.monotonic()
 
-        elapsed = now - LAST_DATA_REQUEST_TIME
+        cached = DATA_CACHE.get(cache_key)
+
+        if cached:
+
+            cached_time, cached_data = cached
+
+            if now - cached_time < CACHE_SECONDS:
+
+                print(
+                    f"Using cached data for "
+                    f"{params.get('symbol')}"
+                )
+
+                return cached_data
+
+        # =================================================
+        # WAIT BETWEEN API REQUESTS
+        # =================================================
+
+        elapsed = (
+            now - LAST_DATA_REQUEST_TIME
+        )
 
         if elapsed < MIN_REQUEST_INTERVAL_SECONDS:
 
-            time.sleep(
-                MIN_REQUEST_INTERVAL_SECONDS - elapsed
+            wait_time = (
+                MIN_REQUEST_INTERVAL_SECONDS
+                - elapsed
             )
 
-        LAST_DATA_REQUEST_TIME = time.monotonic()
+            print(
+                f"Waiting {wait_time:.0f} seconds "
+                f"before next API request..."
+            )
 
-        last_response = None
+            time.sleep(wait_time)
 
-        for attempt in range(3):
+        # =================================================
+        # MAKE REQUEST
+        # =================================================
+
+        for attempt in range(2):
 
             try:
+
+                LAST_DATA_REQUEST_TIME = time.monotonic()
 
                 response = requests.get(
                     url,
@@ -54,76 +128,77 @@ def market_data_request(url, params):
                     timeout=20
                 )
 
-                last_response = response
+                # =========================================
+                # RATE LIMIT ERROR
+                # =========================================
 
                 if response.status_code == 429:
 
-                    retry_after = response.headers.get(
-                        "Retry-After"
-                    )
+                    if attempt == 0:
 
-                    try:
-                        wait_seconds = float(
-                            retry_after
-                        )
-                    except (TypeError, ValueError):
-                        wait_seconds = 20 * (
-                            attempt + 1
+                        print(
+                            "Twelve Data rate limit reached. "
+                            "Waiting 60 seconds..."
                         )
 
-                    wait_seconds = max(
-                        10,
-                        min(wait_seconds, 60)
-                    )
+                        time.sleep(60)
 
-                    print(
-                        "Twelve Data rate limit "
-                        f"(429). Waiting "
-                        f"{wait_seconds:.0f}s..."
-                    )
+                        continue
 
-                    time.sleep(wait_seconds)
-
-                    LAST_DATA_REQUEST_TIME = (
-                        time.monotonic()
-                    )
-
-                    continue
+                    return {
+                        "status": "error",
+                        "message": (
+                            "Rate limit reached. "
+                            "Please wait about 1 minute "
+                            "and try again."
+                        )
+                    }
 
                 response.raise_for_status()
 
-                return response.json()
+                data = response.json()
 
-            except requests.RequestException as e:
+                # =========================================
+                # CACHE SUCCESSFUL DATA
+                # =========================================
 
-                if attempt >= 2:
+                if (
+                    isinstance(data, dict)
+                    and data.get("status") != "error"
+                ):
 
-                    raise RuntimeError(
-                        f"Market data request failed: {e}"
-                    ) from e
+                    DATA_CACHE[cache_key] = (
+                        time.monotonic(),
+                        data
+                    )
 
-                wait_seconds = 5 * (
-                    attempt + 1
-                )
+                return data
 
-                print(
-                    "Market data request error. "
-                    f"Retrying in {wait_seconds}s: {e}"
-                )
+            except requests.RequestException:
 
-                time.sleep(wait_seconds)
+                if attempt == 0:
 
-                LAST_DATA_REQUEST_TIME = (
-                    time.monotonic()
-                )
+                    print(
+                        "Market request failed. "
+                        "Retrying in 15 seconds..."
+                    )
 
-        if last_response is not None:
+                    time.sleep(15)
 
-            last_response.raise_for_status()
+                    continue
 
-        raise RuntimeError(
-            "Twelve Data request failed"
-        )
+                return {
+                    "status": "error",
+                    "message": (
+                        "Market data request failed. "
+                        "Please try again later."
+                    )
+                }
+
+        return {
+            "status": "error",
+            "message": "Market data temporarily unavailable"
+        }
 
 
 # =========================================================
@@ -159,7 +234,7 @@ TIMEFRAME_SETTINGS = {
 
 
 # =========================================================
-# ALLOWED MARKETS - 14 PAIRS
+# ALLOWED MARKETS
 # =========================================================
 
 DISPLAY_PAIRS = {
@@ -195,7 +270,7 @@ DISPLAY_PAIRS = {
 
 
 # =========================================================
-# NO TRADE
+# NO TRADE RESULT
 # =========================================================
 
 def no_trade(
@@ -245,10 +320,7 @@ def no_trade(
 # EMA
 # =========================================================
 
-def ema(
-    series,
-    period
-):
+def ema(series, period):
 
     return series.ewm(
         span=period,
@@ -260,10 +332,7 @@ def ema(
 # RSI
 # =========================================================
 
-def rsi(
-    series,
-    period=14
-):
+def rsi(series, period=14):
 
     delta = series.diff()
 
@@ -305,9 +374,7 @@ def rsi(
 # MACD
 # =========================================================
 
-def macd(
-    series
-):
+def macd(series):
 
     ema12 = ema(
         series,
@@ -343,9 +410,7 @@ def macd(
 # PIP SIZE
 # =========================================================
 
-def pip_size(
-    pair
-):
+def pip_size(pair):
 
     normalized = DISPLAY_PAIRS.get(
         pair,
@@ -367,9 +432,7 @@ def pip_size(
 # NORMALIZE TIMEFRAME
 # =========================================================
 
-def normalize_timeframe(
-    timeframe
-):
+def normalize_timeframe(timeframe):
 
     if timeframe is None:
 
@@ -412,10 +475,7 @@ def normalize_timeframe(
 # RESAMPLE MINUTES
 # =========================================================
 
-def resample_minutes(
-    df,
-    minutes
-):
+def resample_minutes(df, minutes):
 
     if minutes == 1:
 
@@ -545,13 +605,19 @@ def get_signal(
     # API ERROR
     # =====================================================
 
-    if data.get(
-        "status"
-    ) == "error":
+    if not isinstance(data, dict):
+
+        return no_trade(
+            display_pair,
+            "Invalid market data response",
+            timeframe
+        )
+
+    if data.get("status") == "error":
 
         message = data.get(
             "message",
-            "Twelve Data returned an error"
+            "Market data temporarily unavailable"
         )
 
         return no_trade(
@@ -880,7 +946,7 @@ def get_signal(
         sell_score += 1
 
     # =====================================================
-    # SUPPORT / RESISTANCE
+    # SUPPORT / RESISTANCE CONFIRMATION
     # =====================================================
 
     pip = pip_size(
@@ -1009,7 +1075,6 @@ def get_signal(
             ),
 
             "confidence": 0,
-
         }
 
     # =====================================================
