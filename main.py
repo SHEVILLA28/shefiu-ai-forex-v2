@@ -1,9 +1,8 @@
 import os
 import time
+import requests
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
-
-import requests
 
 from config import BOT_TOKEN, CHAT_ID
 from signals import get_signal
@@ -19,7 +18,7 @@ class HealthHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.end_headers()
         self.wfile.write(
-            b"SHFIU AI FOREX V2 is running"
+            b"SHEFIU AI FOREX V2 is running"
         )
 
     def log_message(self, format, *args):
@@ -50,7 +49,7 @@ threading.Thread(
 
 
 # =========================================================
-# MARKETS
+# MARKETS - 14 PAIRS
 # =========================================================
 
 PAIRS = [
@@ -63,9 +62,17 @@ PAIRS = [
     "NZD/USD",
     "XAU/USD",
     "EUR/GBP",
+    "CHF/JPY",
+    "AUD/JPY",
+    "EUR/JPY",
+    "GBP/JPY",
     "USD/SGD",
 ]
 
+
+# =========================================================
+# TIMEFRAMES
+# =========================================================
 
 TIMEFRAMES = {
     "1M": "1min",
@@ -88,6 +95,7 @@ TIMEFRAME_MINUTES = {
 # =========================================================
 
 AUTO_SCAN_ENABLED = True
+
 CURRENT_TIMEFRAME = "5M"
 
 auto_lock = threading.Lock()
@@ -114,8 +122,11 @@ def telegram_request(
     try:
 
         response = requests.post(
+
             f"{TELEGRAM_URL}/{method}",
+
             json=data or {},
+
             timeout=25
         )
 
@@ -141,11 +152,16 @@ def telegram_request(
 def send_menu(chat_id):
 
     auto_status = (
+
         "🟢 AUTOMATIC SCANNING: ON"
+
         if AUTO_SCAN_ENABLED
+
         else
+
         "🔴 AUTOMATIC SCANNING: OFF"
     )
+
 
     keyboard = [
 
@@ -171,6 +187,16 @@ def send_menu(chat_id):
 
         [
             {"text": "EUR/GBP"},
+            {"text": "CHF/JPY"}
+        ],
+
+        [
+            {"text": "AUD/JPY"},
+            {"text": "EUR/JPY"}
+        ],
+
+        [
+            {"text": "GBP/JPY"},
             {"text": "USD/SGD"}
         ],
 
@@ -194,6 +220,7 @@ def send_menu(chat_id):
         ]
     ]
 
+
     message = (
 
         "🤖 SHEFIU AI FOREX V2\n\n"
@@ -207,18 +234,26 @@ def send_menu(chat_id):
 
         "Select a pair below for manual analysis.\n"
 
-        "Automatic scanning uses the selected "
-        "timeframe."
+        "Automatic scanning uses the selected timeframe."
     )
 
+
     telegram_request(
+
         "sendMessage",
+
         {
+
             "chat_id": chat_id,
+
             "text": message,
+
             "reply_markup": {
+
                 "keyboard": keyboard,
+
                 "resize_keyboard": True,
+
                 "one_time_keyboard": False
             }
         }
@@ -240,7 +275,10 @@ def format_signal(
             "⚠️ No signal data was returned."
         )
 
-    if signal.get("signal") == "NO TRADE":
+
+    if signal.get(
+        "signal"
+    ) == "NO TRADE":
 
         return (
 
@@ -258,10 +296,12 @@ def format_signal(
             f"{signal.get('reason', 'Conditions are not strong enough.')}"
         )
 
+
     signal_type = signal.get(
         "signal",
         "UNKNOWN"
     )
+
 
     if signal_type == "BUY":
 
@@ -271,10 +311,12 @@ def format_signal(
 
         icon = "🔴"
 
+
     trend = signal.get(
         "trend",
         "UNKNOWN"
     )
+
 
     if trend == "BUY":
 
@@ -287,6 +329,7 @@ def format_signal(
     else:
 
         trend_icon = "↔️"
+
 
     return (
 
@@ -334,58 +377,82 @@ def analyze_pair(
 
     timeframe = CURRENT_TIMEFRAME
 
+
     telegram_request(
+
         "sendMessage",
+
         {
+
             "chat_id": chat_id,
+
             "text": (
 
                 f"🔎 Analyzing {pair}...\n\n"
 
-                f"⏱️ Timeframe: "
-                f"{timeframe}\n"
+                f"⏱️ Timeframe: {timeframe}\n"
 
                 "Please wait."
             )
         }
     )
 
+
     try:
 
         signal = get_signal(
+
             pair,
+
             timeframe
         )
+
 
         message = format_signal(
+
             signal,
+
             timeframe
         )
 
+
         telegram_request(
+
             "sendMessage",
+
             {
+
                 "chat_id": chat_id,
+
                 "text": message
             }
         )
 
+
         print(
+
             f"Analyzed {pair} "
             f"on {timeframe}"
         )
 
+
     except Exception as e:
 
         print(
+
             f"Signal error for {pair}:",
             e
         )
 
+
         telegram_request(
+
             "sendMessage",
+
             {
+
                 "chat_id": chat_id,
+
                 "text": (
 
                     f"⚠️ Could not analyze "
@@ -401,60 +468,80 @@ def analyze_pair(
 # ANALYZE ALL PAIRS
 # =========================================================
 
-def analyze_all(chat_id):
+def analyze_all(
+    chat_id
+):
 
     timeframe = CURRENT_TIMEFRAME
 
+
     telegram_request(
+
         "sendMessage",
+
         {
+
             "chat_id": chat_id,
+
             "text": (
 
                 "📊 SHEFIU AI FOREX V2\n\n"
 
-                "🔎 Checking all supported "
-                "markets...\n\n"
+                "🔎 Checking all supported markets...\n\n"
 
-                f"⏱️ Timeframe: "
-                f"{timeframe}\n\n"
+                f"⏱️ Timeframe: {timeframe}\n\n"
 
                 "Please wait."
             )
         }
     )
 
+
     for pair in PAIRS:
 
         try:
 
             signal = get_signal(
+
                 pair,
+
                 timeframe
             )
+
 
             if signal is None:
 
                 continue
 
+
             message = format_signal(
+
                 signal,
+
                 timeframe
             )
 
+
             telegram_request(
+
                 "sendMessage",
+
                 {
+
                     "chat_id": chat_id,
+
                     "text": message
                 }
             )
 
+
             time.sleep(1)
+
 
         except Exception as e:
 
             print(
+
                 f"{pair} error:",
                 e
             )
@@ -468,9 +555,11 @@ def automatic_scan_loop():
 
     global last_auto_scan_time
 
+
     print(
         "🟢 Automatic scanner thread started."
     )
+
 
     while True:
 
@@ -482,33 +571,41 @@ def automatic_scan_loop():
 
                 continue
 
+
             timeframe = CURRENT_TIMEFRAME
 
             minutes = TIMEFRAME_MINUTES[
                 timeframe
             ]
 
+
             with auto_lock:
 
                 now = time.time()
 
+
                 if (
+
                     last_auto_scan_time
+
                     and
+
                     now - last_auto_scan_time
                     < minutes * 60
+
                 ):
 
                     wait_for = (
 
                         minutes * 60
-                        -
-                        (
+
+                        - (
+
                             now
-                            -
-                            last_auto_scan_time
+                            - last_auto_scan_time
                         )
                     )
+
 
                     time.sleep(
                         max(
@@ -519,12 +616,16 @@ def automatic_scan_loop():
 
                     continue
 
+
                 last_auto_scan_time = now
 
+
             print(
+
                 f"🔎 Automatic scan started: "
                 f"{timeframe}"
             )
+
 
             for pair in PAIRS:
 
@@ -532,121 +633,144 @@ def automatic_scan_loop():
 
                     break
 
+
                 try:
 
                     signal = get_signal(
+
                         pair,
+
                         timeframe
                     )
+
 
                     if not signal:
 
                         continue
 
+
                     signal_type = signal.get(
                         "signal"
                     )
 
-                    # Only send actionable signals
+
                     if signal_type not in {
+
                         "BUY",
                         "SELL"
+
                     }:
 
                         continue
 
+
                     key = (
+
                         pair,
+
                         timeframe
                     )
+
 
                     signature = (
 
                         signal_type,
 
-                        signal.get(
-                            "entry"
-                        ),
+                        signal.get("entry"),
 
-                        signal.get(
-                            "take_profit"
-                        ),
+                        signal.get("take_profit"),
 
-                        signal.get(
-                            "stop_loss"
-                        )
+                        signal.get("stop_loss")
                     )
 
-                    # Prevent duplicate alerts
+
                     if (
-                        last_auto_alert.get(
-                            key
-                        )
+
+                        last_auto_alert.get(key)
                         == signature
+
                     ):
 
                         continue
 
-                    last_auto_alert[
-                        key
-                    ] = signature
+
+                    last_auto_alert[key] = signature
+
 
                     telegram_request(
+
                         "sendMessage",
+
                         {
+
                             "chat_id": CHAT_ID,
+
                             "text": (
 
                                 "🔔 AUTOMATIC "
                                 "FOREX SIGNAL\n\n"
 
-                                +
-                                format_signal(
+                                + format_signal(
+
                                     signal,
+
                                     timeframe
                                 )
                             )
                         }
                     )
 
+
                     print(
 
                         f"🚨 Auto signal: "
+
                         f"{pair} "
+
                         f"{signal_type} "
+
                         f"{timeframe}"
                     )
 
+
                     time.sleep(1)
+
 
                 except Exception as e:
 
                     print(
 
-                        f"Automatic scan "
-                        f"error for {pair}:",
+                        f"Automatic scan error "
+                        f"for {pair}:",
                         e
                     )
 
+
             print(
 
-                f"✅ Automatic scan "
-                f"finished: {timeframe}"
+                f"✅ Automatic scan finished: "
+                f"{timeframe}"
             )
+
 
         except Exception as e:
 
             print(
+
                 "Automatic scanner error:",
                 e
             )
+
 
             time.sleep(10)
 
 
 threading.Thread(
+
     target=automatic_scan_loop,
+
     daemon=True
+
 ).start()
 
 
@@ -654,39 +778,51 @@ threading.Thread(
 # HANDLE TELEGRAM MESSAGE
 # =========================================================
 
-def handle_update(update):
+def handle_update(
+    update
+):
 
     global AUTO_SCAN_ENABLED
+
     global CURRENT_TIMEFRAME
+
     global last_auto_scan_time
+
 
     message = update.get(
         "message"
     )
 
+
     if not message:
 
         return
+
 
     chat = message.get(
         "chat",
         {}
     )
 
+
     chat_id = chat.get(
         "id"
     )
+
 
     text = message.get(
         "text",
         ""
     )
 
+
     if not chat_id:
 
         return
 
+
     print(
+
         f"Telegram command received: "
         f"{text}"
     )
@@ -733,28 +869,37 @@ def handle_update(update):
         "⏱️ 5 MIN": "5M",
     }
 
+
     if text in timeframe_buttons:
 
         CURRENT_TIMEFRAME = (
+
             timeframe_buttons[text]
         )
 
+
         last_auto_scan_time = 0
 
+
         telegram_request(
+
             "sendMessage",
+
             {
+
                 "chat_id": chat_id,
+
                 "text": (
 
-                    f"⏱️ Timeframe changed "
-                    f"to {CURRENT_TIMEFRAME}.\n\n"
+                    f"⏱️ Timeframe changed to "
+                    f"{CURRENT_TIMEFRAME}.\n\n"
 
-                    "The automatic scanner "
-                    "will use this timeframe."
+                    "The automatic scanner will "
+                    "use this timeframe."
                 )
             }
         )
+
 
         send_menu(
             chat_id
@@ -773,24 +918,28 @@ def handle_update(update):
 
         last_auto_scan_time = 0
 
+
         telegram_request(
+
             "sendMessage",
+
             {
+
                 "chat_id": chat_id,
+
                 "text": (
 
-                    "🟢 AUTOMATIC "
-                    "SCANNING: ON\n\n"
+                    "🟢 AUTOMATIC SCANNING: ON\n\n"
 
                     f"⏱️ Timeframe: "
                     f"{CURRENT_TIMEFRAME}\n"
 
-                    "The bot will scan "
-                    "automatically and send "
-                    "BUY/SELL signals only."
+                    "The bot will scan automatically "
+                    "and send BUY/SELL signals only."
                 )
             }
         )
+
 
         send_menu(
             chat_id
@@ -807,20 +956,24 @@ def handle_update(update):
 
         AUTO_SCAN_ENABLED = False
 
+
         telegram_request(
+
             "sendMessage",
+
             {
+
                 "chat_id": chat_id,
+
                 "text": (
 
-                    "🔴 AUTOMATIC "
-                    "SCANNING: OFF\n\n"
+                    "🔴 AUTOMATIC SCANNING: OFF\n\n"
 
-                    "Manual Telegram "
-                    "analysis remains ON."
+                    "Manual Telegram analysis remains ON."
                 )
             }
         )
+
 
         send_menu(
             chat_id
@@ -849,7 +1002,9 @@ def handle_update(update):
     if text in PAIRS:
 
         analyze_pair(
+
             chat_id,
+
             text
         )
 
@@ -861,9 +1016,13 @@ def handle_update(update):
     # =====================================================
 
     telegram_request(
+
         "sendMessage",
+
         {
+
             "chat_id": chat_id,
+
             "text": (
 
                 "❓ I don't understand "
@@ -883,53 +1042,68 @@ def handle_update(update):
 def telegram_loop():
 
     print(
-        "🟢 Telegram manual-control "
-        "system started."
+        "🟢 Telegram manual-control system started."
     )
 
+
     offset = None
+
 
     while True:
 
         try:
 
             data = {
+
                 "timeout": 25
             }
+
 
             if offset is not None:
 
                 data["offset"] = offset
 
+
             result = telegram_request(
+
                 "getUpdates",
+
                 data
             )
+
 
             if result.get("ok"):
 
                 updates = result.get(
+
                     "result",
+
                     []
                 )
+
 
                 for update in updates:
 
                     offset = (
+
                         update["update_id"]
                         + 1
                     )
+
 
                     handle_update(
                         update
                     )
 
+
         except Exception as e:
 
             print(
+
                 "Telegram loop error:",
                 e
             )
+
 
             time.sleep(5)
 
@@ -942,25 +1116,32 @@ print(
     "🤖 SHEFIU AI FOREX V2"
 )
 
+
 print(
     "🟢 Automatic scanning: ON"
 )
+
 
 print(
     "🟢 Manual Telegram control: ON"
 )
 
+
 print(
+
     f"⏱️ Timeframe: "
     f"{CURRENT_TIMEFRAME}"
 )
+
 
 print(
     "📱 Waiting for Telegram commands..."
 )
 
+
 send_menu(
     CHAT_ID
 )
+
 
 telegram_loop()
