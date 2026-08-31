@@ -2,10 +2,16 @@ import os
 import time
 import threading
 import requests
+
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 from config import BOT_TOKEN, CHAT_ID
 from signals import get_signal
+
+
+# =========================================================
+# SHEFIU AI FOREX V2 - MAIN BOT
+# =========================================================
 
 
 # =========================================================
@@ -15,8 +21,14 @@ from signals import get_signal
 class HealthHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
+
         self.send_response(200)
-        self.send_header("Content-Type", "text/plain")
+
+        self.send_header(
+            "Content-Type",
+            "text/plain"
+        )
+
         self.end_headers()
 
         self.wfile.write(
@@ -24,6 +36,7 @@ class HealthHandler(BaseHTTPRequestHandler):
         )
 
     def log_message(self, format, *args):
+
         pass
 
 
@@ -41,7 +54,9 @@ def start_server():
         HealthHandler
     )
 
-    print(f"Health server running on port {port}")
+    print(
+        f"Health server running on port {port}"
+    )
 
     server.serve_forever()
 
@@ -53,20 +68,21 @@ threading.Thread(
 
 
 # =========================================================
-# FOREX MARKETS
+# FOREX PAIRS
 # =========================================================
 
 PAIRS = [
 
     "EUR/USD",
     "GBP/USD",
+
     "USD/JPY",
     "USD/CHF",
 
     "AUD/USD",
     "USD/CAD",
-    "NZD/USD",
 
+    "NZD/USD",
     "XAU/USD",
 
     "EUR/GBP",
@@ -81,17 +97,8 @@ PAIRS = [
 
 
 # =========================================================
-# TIMEFRAMES
+# TIMEFRAME
 # =========================================================
-
-TIMEFRAME_MINUTES = {
-
-    "1M": 1,
-    "2M": 2,
-    "3M": 3,
-    "5M": 5,
-}
-
 
 CURRENT_TIMEFRAME = "5M"
 
@@ -102,15 +109,24 @@ CURRENT_TIMEFRAME = "5M"
 
 AUTO_SCAN_ENABLED = True
 
-auto_lock = threading.Lock()
+AUTO_SCAN_INTERVAL_SECONDS = 15 * 60
 
 last_auto_scan_time = 0
 
-# Stores the last BUY or SELL signal sent
 last_auto_signal = {}
 
-# Minimum time before repeating the SAME signal
 AUTO_SIGNAL_COOLDOWN = 15 * 60
+
+
+# =========================================================
+# IMPORTANT:
+# ONLY ONE MARKET ANALYSIS AT A TIME
+#
+# This prevents manual analysis and automatic scanning
+# from sending many Twelve Data requests together.
+# =========================================================
+
+ANALYSIS_LOCK = threading.Lock()
 
 
 # =========================================================
@@ -135,17 +151,15 @@ def telegram_request(
 
             json=data or {},
 
-            timeout=30
+            timeout=35
         )
 
-        result = response.json()
-
-        return result
+        return response.json()
 
     except Exception as e:
 
         print(
-            "Telegram request error:",
+            "Telegram error:",
             e
         )
 
@@ -158,7 +172,7 @@ def telegram_request(
 
 
 # =========================================================
-# SEND TELEGRAM MESSAGE
+# SEND MESSAGE
 # =========================================================
 
 def send_message(
@@ -174,9 +188,11 @@ def send_message(
         "text": text,
     }
 
-    if reply_markup:
+    if reply_markup is not None:
 
-        data["reply_markup"] = reply_markup
+        data[
+            "reply_markup"
+        ] = reply_markup
 
     return telegram_request(
         "sendMessage",
@@ -267,17 +283,19 @@ def send_menu(chat_id):
 
         "🟢 MANUAL TELEGRAM CONTROL: ON\n"
 
-        f"{auto_status}\n"
+        f"{auto_status}\n\n"
 
         f"⏱️ CURRENT TIMEFRAME: "
         f"{CURRENT_TIMEFRAME}\n\n"
 
         "📊 Select a Forex pair below.\n\n"
 
-        "🤖 Automatic scanning checks all "
-        "supported Forex markets.\n\n"
+        "🤖 Automatic scanning checks "
+        "supported Forex pairs.\n\n"
 
-        "⚠️ NO OTC MARKETS."
+        "⚠️ NO OTC MARKETS.\n\n"
+
+        "⚠️ Signals are not guaranteed profit."
     )
 
 
@@ -325,15 +343,21 @@ def format_signal(
     )
 
     used_timeframe = (
+
         timeframe
+
         or
-        signal.get("timeframe", "N/A")
+
+        signal.get(
+            "timeframe",
+            "N/A"
+        )
     )
 
 
-    # -----------------------------------------------------
+    # =====================================================
     # NO TRADE
-    # -----------------------------------------------------
+    # =====================================================
 
     if signal_type == "NO TRADE":
 
@@ -348,24 +372,24 @@ def format_signal(
             f"⏱️ Timeframe: "
             f"{used_timeframe}\n\n"
 
+            f"📈 Trend: "
+            f"{signal.get('trend', 'WAIT')}\n\n"
+
             f"📝 Reason: "
             f"{signal.get('reason', 'WAIT')}\n\n"
 
-            "⚠️ Signal only. No guaranteed profit."
+            "⚠️ Signal only. "
+            "No guaranteed profit."
         )
 
 
-    # -----------------------------------------------------
-    # BUY
-    # -----------------------------------------------------
+    # =====================================================
+    # SIGNAL ICON
+    # =====================================================
 
     if signal_type == "BUY":
 
         signal_icon = "🟢"
-
-    # -----------------------------------------------------
-    # SELL
-    # -----------------------------------------------------
 
     else:
 
@@ -413,7 +437,10 @@ def format_signal(
         f"{signal.get('stop_loss', 'N/A')}\n\n"
 
         f"{trend_icon} Trend: "
-        f"{trend}\n"
+        f"{trend}\n\n"
+
+        f"📊 RSI: "
+        f"{signal.get('rsi', 'N/A')}\n"
 
         f"🔥 Confidence: "
         f"{signal.get('confidence', 'N/A')}%\n\n"
@@ -421,7 +448,8 @@ def format_signal(
         f"📝 Reason: "
         f"{signal.get('reason', 'N/A')}\n\n"
 
-        "⚠️ Signal only. No guaranteed profit."
+        "⚠️ Signal only. "
+        "No guaranteed profit."
     )
 
 
@@ -433,6 +461,9 @@ def analyze_pair(
     chat_id,
     pair
 ):
+
+    global CURRENT_TIMEFRAME
+
 
     timeframe = CURRENT_TIMEFRAME
 
@@ -455,10 +486,14 @@ def analyze_pair(
 
     try:
 
-        signal = get_signal(
-            pair,
-            timeframe
-        )
+        # Only one market request sequence at a time
+
+        with ANALYSIS_LOCK:
+
+            signal = get_signal(
+                pair,
+                timeframe
+            )
 
 
         message = format_signal(
@@ -474,6 +509,7 @@ def analyze_pair(
 
 
         print(
+
             f"Analyzed {pair} "
             f"on {timeframe}"
         )
@@ -518,12 +554,14 @@ def analyze_all(chat_id):
 
             "📊 SHEFIU AI FOREX V2\n\n"
 
-            "🔎 Checking all Forex pairs...\n\n"
+            "🔎 Checking all Forex pairs.\n\n"
+
+            "⚠️ This may take some time "
+            "because requests are slowed down "
+            "to protect the API.\n\n"
 
             f"⏱️ Timeframe: "
-            f"{timeframe}\n\n"
-
-            "Please wait."
+            f"{timeframe}"
         )
     )
 
@@ -532,10 +570,12 @@ def analyze_all(chat_id):
 
         try:
 
-            signal = get_signal(
-                pair,
-                timeframe
-            )
+            with ANALYSIS_LOCK:
+
+                signal = get_signal(
+                    pair,
+                    timeframe
+                )
 
 
             message = format_signal(
@@ -550,15 +590,26 @@ def analyze_all(chat_id):
             )
 
 
-            time.sleep(1)
-
-
         except Exception as e:
 
             print(
-                f"{pair} error:",
+                f"Error analyzing {pair}:",
                 e
             )
+
+
+            send_message(
+
+                chat_id,
+
+                f"⚠️ Could not analyze "
+                f"{pair}."
+            )
+
+
+        # Extra protection between pairs
+
+        time.sleep(3)
 
 
     send_message(
@@ -570,7 +621,7 @@ def analyze_all(chat_id):
 
 
 # =========================================================
-# CHECK DUPLICATE AUTOMATIC SIGNAL
+# DUPLICATE SIGNAL PROTECTION
 # =========================================================
 
 def should_send_auto_signal(
@@ -580,7 +631,8 @@ def should_send_auto_signal(
 ):
 
     signal_type = signal.get(
-        "signal"
+        "signal",
+        "NO TRADE"
     )
 
 
@@ -607,6 +659,7 @@ def should_send_auto_signal(
 
 
     # First signal
+
     if previous is None:
 
         last_auto_signal[key] = {
@@ -629,7 +682,9 @@ def should_send_auto_signal(
     )
 
 
-    # Signal direction changed
+    # Signal changed from BUY to SELL
+    # or SELL to BUY
+
     if previous_signal != signal_type:
 
         last_auto_signal[key] = {
@@ -642,12 +697,16 @@ def should_send_auto_signal(
         return True
 
 
-    # Same signal still active.
-    # Do not repeat immediately.
+    # Same signal cooldown
 
     if (
+
         now - previous_time
-        >= AUTO_SIGNAL_COOLDOWN
+
+        >=
+
+        AUTO_SIGNAL_COOLDOWN
+
     ):
 
         last_auto_signal[key] = {
@@ -681,58 +740,55 @@ def automatic_scan_loop():
 
         try:
 
+            # Scanner disabled
+
             if not AUTO_SCAN_ENABLED:
 
-                time.sleep(5)
+                time.sleep(10)
 
                 continue
 
 
+            now = time.time()
+
+
+            # Wait until next automatic scan
+
+            if last_auto_scan_time != 0:
+
+                elapsed = (
+                    now
+                    -
+                    last_auto_scan_time
+                )
+
+
+                if elapsed < AUTO_SCAN_INTERVAL_SECONDS:
+
+                    time.sleep(10)
+
+                    continue
+
+
+            # Mark scan start
+
+            last_auto_scan_time = time.time()
+
+
             timeframe = CURRENT_TIMEFRAME
-
-            minutes = TIMEFRAME_MINUTES.get(
-                timeframe,
-                5
-            )
-
-
-            with auto_lock:
-
-                now = time.time()
-
-
-                if last_auto_scan_time:
-
-                    elapsed = (
-                        now
-                        -
-                        last_auto_scan_time
-                    )
-
-
-                    required_time = (
-                        minutes * 60
-                    )
-
-
-                    if elapsed < required_time:
-
-                        time.sleep(5)
-
-                        continue
-
-
-                last_auto_scan_time = now
 
 
             print(
 
-                f"🔎 Automatic scan started "
-                f"for {timeframe}"
+                f"🔎 Automatic scan started: "
+                f"{timeframe}"
             )
 
 
             for pair in PAIRS:
+
+                # Stop immediately if user turns off
+                # automatic scanning
 
                 if not AUTO_SCAN_ENABLED:
 
@@ -741,10 +797,14 @@ def automatic_scan_loop():
 
                 try:
 
-                    signal = get_signal(
-                        pair,
-                        timeframe
-                    )
+                    # Only one analysis at a time
+
+                    with ANALYSIS_LOCK:
+
+                        signal = get_signal(
+                            pair,
+                            timeframe
+                        )
 
 
                     if not signal:
@@ -753,22 +813,28 @@ def automatic_scan_loop():
 
 
                     signal_type = signal.get(
+
                         "signal",
+
                         "NO TRADE"
+
                     )
 
 
+                    # Only send BUY or SELL
+
                     if signal_type not in (
+
                         "BUY",
+
                         "SELL"
+
                     ):
 
                         continue
 
 
-                    # -----------------------------------------
-                    # DUPLICATE PROTECTION
-                    # -----------------------------------------
+                    # Prevent duplicates
 
                     if not should_send_auto_signal(
 
@@ -815,12 +881,8 @@ def automatic_scan_loop():
 
                         f"🚨 AUTO SIGNAL SENT: "
                         f"{pair} "
-                        f"{signal_type} "
-                        f"{timeframe}"
+                        f"{signal_type}"
                     )
-
-
-                    time.sleep(1)
 
 
                 except Exception as e:
@@ -833,21 +895,28 @@ def automatic_scan_loop():
                     )
 
 
+                # Extra delay between pairs
+
+                time.sleep(3)
+
+
             print(
 
-                f"✅ Automatic scan finished: "
-                f"{timeframe}"
+                "✅ Automatic scan finished."
             )
 
 
         except Exception as e:
 
             print(
+
                 "Automatic scanner error:",
+
                 e
             )
 
-            time.sleep(10)
+
+            time.sleep(30)
 
 
 # =========================================================
@@ -956,6 +1025,8 @@ def handle_update(update):
         )
 
 
+        # Reset auto scan timer
+
         last_auto_scan_time = 0
 
 
@@ -968,8 +1039,8 @@ def handle_update(update):
                 f"⏱️ Timeframe changed to "
                 f"{CURRENT_TIMEFRAME}.\n\n"
 
-                "Automatic scanning will use "
-                "this timeframe."
+                "Manual and automatic analysis "
+                "will use this timeframe."
             )
         )
 
@@ -1001,10 +1072,9 @@ def handle_update(update):
                 f"⏱️ Timeframe: "
                 f"{CURRENT_TIMEFRAME}\n\n"
 
-                "The bot will automatically "
-                "scan all supported Forex pairs.\n\n"
-
-                "Duplicate signals are protected."
+                "The bot will scan supported "
+                "Forex pairs gradually to help "
+                "protect the market-data API."
             )
         )
 
@@ -1031,8 +1101,8 @@ def handle_update(update):
 
                 "🔴 AUTOMATIC SCANNING: OFF\n\n"
 
-                "Manual Forex analysis is "
-                "still available."
+                "Manual Forex analysis "
+                "is still available."
             )
         )
 
@@ -1092,11 +1162,10 @@ def handle_update(update):
 
         (
 
-            "❓ I don't understand "
-            "that command.\n\n"
+            "❓ I don't understand that command.\n\n"
 
-            "Press /menu to open "
-            "the Forex menu."
+            "Press /menu to open the "
+            "Forex menu."
         )
     )
 
@@ -1141,8 +1210,11 @@ def telegram_loop():
             if result.get("ok"):
 
                 updates = result.get(
+
                     "result",
+
                     []
+
                 )
 
 
@@ -1151,7 +1223,9 @@ def telegram_loop():
                     offset = (
 
                         update["update_id"]
+
                         + 1
+
                     )
 
 
@@ -1162,7 +1236,7 @@ def telegram_loop():
 
             else:
 
-                time.sleep(3)
+                time.sleep(5)
 
 
         except Exception as e:
@@ -1172,7 +1246,7 @@ def telegram_loop():
                 e
             )
 
-            time.sleep(5)
+            time.sleep(10)
 
 
 # =========================================================
@@ -1180,16 +1254,19 @@ def telegram_loop():
 # =========================================================
 
 print()
+
 print("=" * 50)
+
 print("🤖 SHEFIU AI FOREX V2")
+
 print("=" * 50)
 
 print(
-    "🟢 Automatic scanning: ON"
+    "🟢 Automatic scanning system ready"
 )
 
 print(
-    "🟢 Manual Telegram control: ON"
+    "🟢 Manual Telegram control ready"
 )
 
 print(
@@ -1213,6 +1290,6 @@ print("=" * 50)
 send_menu(CHAT_ID)
 
 
-# Start Telegram
+# Start Telegram control loop
 
 telegram_loop()
