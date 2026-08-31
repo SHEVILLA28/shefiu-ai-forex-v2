@@ -7,10 +7,6 @@ import requests
 import pandas as pd
 
 
-# =========================================================
-# CONFIGURATION
-# =========================================================
-
 API_KEY = os.getenv("TWELVE_DATA_API_KEY")
 
 MIN_CANDLES = 80
@@ -31,7 +27,7 @@ MIN_REQUEST_INTERVAL_SECONDS = 8
 def market_data_request(url, params):
     """
     Request Twelve Data market data while spacing requests
-    apart and retrying temporary rate-limit responses.
+    apart and retrying temporary 429 rate-limit responses.
     """
 
     global LAST_DATA_REQUEST_TIME
@@ -71,26 +67,17 @@ def market_data_request(url, params):
                     )
 
                     try:
-
                         wait_seconds = float(
                             retry_after
                         )
-
-                    except (
-                        TypeError,
-                        ValueError
-                    ):
-
+                    except (TypeError, ValueError):
                         wait_seconds = 20 * (
                             attempt + 1
                         )
 
                     wait_seconds = max(
                         10,
-                        min(
-                            wait_seconds,
-                            60
-                        )
+                        min(wait_seconds, 60)
                     )
 
                     print(
@@ -99,9 +86,7 @@ def market_data_request(url, params):
                         f"{wait_seconds:.0f}s..."
                     )
 
-                    time.sleep(
-                        wait_seconds
-                    )
+                    time.sleep(wait_seconds)
 
                     LAST_DATA_REQUEST_TIME = (
                         time.monotonic()
@@ -130,9 +115,7 @@ def market_data_request(url, params):
                     f"Retrying in {wait_seconds}s: {e}"
                 )
 
-                time.sleep(
-                    wait_seconds
-                )
+                time.sleep(wait_seconds)
 
                 LAST_DATA_REQUEST_TIME = (
                     time.monotonic()
@@ -180,7 +163,7 @@ TIMEFRAME_SETTINGS = {
 
 
 # =========================================================
-# ALLOWED MARKETS
+# ALLOWED MARKETS - 14 PAIRS
 # =========================================================
 
 DISPLAY_PAIRS = {
@@ -197,17 +180,21 @@ DISPLAY_PAIRS = {
 
     "USD/CAD": "USD/CAD",
 
-    "USDCAD": "USD/CAD",
-
     "NZD/USD": "NZD/USD",
 
     "XAU/USD": "XAU/USD",
 
-    "XAUUSD": "XAU/USD",
-
     "EUR/GBP": "EUR/GBP",
 
-    "USD/SGD": "USD/SGD",
+    "EUR/JPY": "EUR/JPY",
+
+    "CHF/JPY": "CHF/JPY",
+
+    "AUD/JPY": "AUD/JPY",
+
+    "GBP/JPY": "GBP/JPY",
+
+    "EUR/AUD": "EUR/AUD",
 }
 
 
@@ -315,7 +302,7 @@ def rsi(
         100 / (1 + rs)
     )
 
-    return result.fillna(50)
+    return result.fillna(100)
 
 
 # =========================================================
@@ -686,10 +673,8 @@ def get_signal(
     # =====================================================
 
     if minutes in {
-
         2,
         3,
-
     }:
 
         df = resample_minutes(
@@ -845,45 +830,17 @@ def get_signal(
         trend = "SIDEWAYS"
 
     # =====================================================
-    # EMA MOMENTUM
-    # =====================================================
-
-    previous_ema20 = float(
-        previous["ema20"]
-    )
-
-    previous_ema50 = float(
-        previous["ema50"]
-    )
-
-    if (
-        ema20 > previous_ema20
-        and
-        ema50 >= previous_ema50
-    ):
-
-        buy_score += 1
-
-    elif (
-        ema20 < previous_ema20
-        and
-        ema50 <= previous_ema50
-    ):
-
-        sell_score += 1
-
-    # =====================================================
     # RSI
     # =====================================================
 
     if (
-        52 <= rsi_value < 70
+        50 <= rsi_value < 70
     ):
 
         buy_score += 1
 
     elif (
-        30 < rsi_value <= 48
+        30 < rsi_value <= 50
     ):
 
         sell_score += 1
@@ -961,21 +918,11 @@ def get_signal(
         sell_score += 1
 
     # =====================================================
-    # SIGNAL THRESHOLD
-    # =====================================================
-
-    # Reduced from 5 to 4 so the bot can identify
-    # reasonable setups without requiring every
-    # confirmation to occur at the same time.
-
-    minimum_score = 4
-
-    # =====================================================
     # STRONG BUY
     # =====================================================
 
     if (
-        buy_score >= minimum_score
+        buy_score >= 5
         and
         buy_score > sell_score
         and
@@ -986,7 +933,7 @@ def get_signal(
 
         confidence = min(
             95,
-            55 + buy_score * 7
+            60 + buy_score * 5
         )
 
         trend = "BUY"
@@ -996,7 +943,7 @@ def get_signal(
     # =====================================================
 
     elif (
-        sell_score >= minimum_score
+        sell_score >= 5
         and
         sell_score > buy_score
         and
@@ -1007,7 +954,7 @@ def get_signal(
 
         confidence = min(
             95,
-            55 + sell_score * 7
+            60 + sell_score * 5
         )
 
         trend = "SELL"
@@ -1062,9 +1009,6 @@ def get_signal(
                 resistance,
                 5
             ),
-
-            "confidence": 0,
-
         }
 
     # =====================================================
@@ -1158,4 +1102,4 @@ def get_signal(
         ),
 
         "timeframe": timeframe,
-        }
+    }
