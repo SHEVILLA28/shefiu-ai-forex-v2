@@ -12,6 +12,7 @@ API_KEY = os.getenv("TWELVE_DATA_API_KEY")
 MIN_CANDLES = 80
 MAX_DATA_AGE_MINUTES = 15
 
+
 # =========================================================
 # TWELVE DATA RATE LIMIT PROTECTION
 # =========================================================
@@ -20,7 +21,6 @@ DATA_REQUEST_LOCK = threading.Lock()
 
 LAST_DATA_REQUEST_TIME = 0.0
 
-# Keep requests spaced apart to reduce 429 errors.
 MIN_REQUEST_INTERVAL_SECONDS = 8
 
 
@@ -147,10 +147,6 @@ def market_data_request(url, params):
 # TIMEFRAME SETTINGS
 # =========================================================
 
-# Twelve Data currently documents 1min and 5min
-# intraday intervals. 2min and 3min are built locally
-# from 1min candles.
-
 TIMEFRAME_SETTINGS = {
 
     "1M": {
@@ -180,7 +176,7 @@ TIMEFRAME_SETTINGS = {
 
 
 # =========================================================
-# ALLOWED MARKETS
+# ALLOWED MARKETS - 10 PAIRS
 # =========================================================
 
 DISPLAY_PAIRS = {
@@ -204,6 +200,10 @@ DISPLAY_PAIRS = {
     "XAU/USD": "XAU/USD",
 
     "XAUUSD": "XAU/USD",
+
+    "EUR/GBP": "EUR/GBP",
+
+    "USD/SGD": "USD/SGD",
 }
 
 
@@ -505,14 +505,11 @@ def get_signal(
             "TWELVE_DATA_API_KEY is missing in Render Environment"
         )
 
-
     pair = pair.strip().upper()
-
 
     display_pair = DISPLAY_PAIRS.get(
         pair
     )
-
 
     if not display_pair:
 
@@ -522,21 +519,17 @@ def get_signal(
             timeframe
         )
 
-
     timeframe = normalize_timeframe(
         timeframe
     )
-
 
     settings = TIMEFRAME_SETTINGS[
         timeframe
     ]
 
-
     minutes = settings[
         "minutes"
     ]
-
 
     # =====================================================
     # MARKET CLOSED CHECK
@@ -546,10 +539,6 @@ def get_signal(
         timezone.utc
     )
 
-
-    # Forex and spot gold are normally closed
-    # during the weekend.
-
     if now.weekday() >= 5:
 
         return no_trade(
@@ -557,7 +546,6 @@ def get_signal(
             "Market closed",
             timeframe
         )
-
 
     # =====================================================
     # TWELVE DATA REQUEST
@@ -569,7 +557,6 @@ def get_signal(
         "https://api.twelvedata.com/"
         "time_series"
     )
-
 
     params = {
 
@@ -586,12 +573,10 @@ def get_signal(
         "apikey": API_KEY,
     }
 
-
     data = market_data_request(
         url,
         params
     )
-
 
     # =====================================================
     # API ERROR
@@ -612,11 +597,9 @@ def get_signal(
             timeframe
         )
 
-
     rows = data.get(
         "values"
     ) or []
-
 
     if len(rows) < MIN_CANDLES:
 
@@ -626,7 +609,6 @@ def get_signal(
             timeframe
         )
 
-
     # =====================================================
     # DATAFRAME
     # =====================================================
@@ -634,7 +616,6 @@ def get_signal(
     df = pd.DataFrame(
         rows
     )
-
 
     required = {
 
@@ -644,7 +625,6 @@ def get_signal(
         "low",
         "close",
     }
-
 
     if not required.issubset(
         df.columns
@@ -656,16 +636,11 @@ def get_signal(
             timeframe
         )
 
-
     df["datetime"] = pd.to_datetime(
-
         df["datetime"],
-
         utc=True,
-
         errors="coerce"
     )
-
 
     for column in [
 
@@ -677,15 +652,11 @@ def get_signal(
     ]:
 
         df[column] = pd.to_numeric(
-
             df[column],
-
             errors="coerce"
         )
 
-
     df = df.dropna(
-
         subset=[
 
             "datetime",
@@ -697,18 +668,14 @@ def get_signal(
         ]
     )
 
-
     df = (
-
         df.sort_values(
             "datetime"
         )
-
         .reset_index(
             drop=True
         )
     )
-
 
     # =====================================================
     # BUILD 2M / 3M CANDLES
@@ -722,57 +689,39 @@ def get_signal(
     }:
 
         df = resample_minutes(
-
             df,
-
             minutes
         )
-
 
     if len(df) < MIN_CANDLES:
 
         return no_trade(
-
             display_pair,
-
             "Not enough valid timeframe candles",
-
             timeframe
         )
-
 
     # =====================================================
     # DATA FRESHNESS
     # =====================================================
 
     latest_time = (
-
         df["datetime"]
-
         .iloc[-1]
-
         .to_pydatetime()
     )
 
-
     age_minutes = (
-
         now - latest_time
-
     ).total_seconds() / 60
-
 
     if age_minutes > MAX_DATA_AGE_MINUTES:
 
         return no_trade(
-
             display_pair,
-
             "Market data is stale / market may be closed",
-
             timeframe
         )
-
 
     # =====================================================
     # PRICE DATA
@@ -784,109 +733,76 @@ def get_signal(
 
     low = df["low"]
 
-
     # =====================================================
     # INDICATORS
     # =====================================================
 
     df["ema20"] = ema(
-
         close,
-
         20
     )
 
-
     df["ema50"] = ema(
-
         close,
-
         50
     )
 
-
     df["rsi"] = rsi(
-
         close,
-
         14
     )
 
-
     (
-
         df["macd"],
-
         df["macd_signal"],
-
         df["macd_hist"]
-
     ) = macd(
-
         close
     )
-
 
     latest = df.iloc[-1]
 
     previous = df.iloc[-2]
 
-
     price = float(
-
         latest["close"]
     )
 
-
     ema20 = float(
-
         latest["ema20"]
     )
 
-
     ema50 = float(
-
         latest["ema50"]
     )
 
-
     rsi_value = float(
-
         latest["rsi"]
     )
 
-
     macd_value = float(
-
         latest["macd"]
     )
 
-
     macd_signal_value = float(
-
         latest["macd_signal"]
     )
-
 
     # =====================================================
     # SUPPORT / RESISTANCE
     # =====================================================
 
     support = float(
-
         low.tail(
             20
         ).min()
     )
 
-
     resistance = float(
-
         high.tail(
             20
         ).max()
     )
-
 
     # =====================================================
     # SCORES
@@ -895,7 +811,6 @@ def get_signal(
     buy_score = 0
 
     sell_score = 0
-
 
     # =====================================================
     # TREND
@@ -915,7 +830,6 @@ def get_signal(
 
         trend = "BUY"
 
-
     elif (
 
         price < ema50
@@ -930,11 +844,9 @@ def get_signal(
 
         trend = "SELL"
 
-
     else:
 
         trend = "SIDEWAYS"
-
 
     # =====================================================
     # RSI
@@ -948,7 +860,6 @@ def get_signal(
 
         buy_score += 1
 
-
     elif (
 
         30 < rsi_value <= 50
@@ -957,22 +868,17 @@ def get_signal(
 
         sell_score += 1
 
-
     # =====================================================
     # MACD
     # =====================================================
 
     previous_macd = float(
-
         previous["macd"]
     )
 
-
     previous_signal = float(
-
         previous["macd_signal"]
     )
-
 
     if (
 
@@ -986,7 +892,6 @@ def get_signal(
 
         buy_score += 2
 
-
     elif (
 
         macd_value < macd_signal_value
@@ -999,42 +904,33 @@ def get_signal(
 
         sell_score += 2
 
-
     elif macd_value > macd_signal_value:
 
         buy_score += 1
 
-
     elif macd_value < macd_signal_value:
 
         sell_score += 1
-
 
     # =====================================================
     # SUPPORT / RESISTANCE
     # =====================================================
 
     pip = pip_size(
-
         display_pair
     )
 
-
     near_support = (
-
         price <= support + (
             15 * pip
         )
     )
 
-
     near_resistance = (
-
         price >= resistance - (
             15 * pip
         )
     )
-
 
     if (
 
@@ -1048,7 +944,6 @@ def get_signal(
 
         buy_score += 1
 
-
     if (
 
         near_resistance
@@ -1060,7 +955,6 @@ def get_signal(
     ):
 
         sell_score += 1
-
 
     # =====================================================
     # STRONG BUY
@@ -1082,17 +976,12 @@ def get_signal(
 
         signal = "BUY"
 
-
         confidence = min(
-
             95,
-
             60 + buy_score * 5
         )
 
-
         trend = "BUY"
-
 
     # =====================================================
     # STRONG SELL
@@ -1114,17 +1003,12 @@ def get_signal(
 
         signal = "SELL"
 
-
         confidence = min(
-
             95,
-
             60 + sell_score * 5
         )
 
-
         trend = "SELL"
-
 
     # =====================================================
     # NO TRADE
@@ -1135,74 +1019,48 @@ def get_signal(
         return {
 
             **no_trade(
-
                 display_pair,
-
                 "Indicators are not strongly aligned; WAIT",
-
                 timeframe
-
             ),
 
             "entry": round(
-
                 price,
-
                 5
-
             ),
 
             "trend": trend,
 
             "rsi": round(
-
                 rsi_value,
-
                 2
-
             ),
 
             "ema50": round(
-
                 ema50,
-
                 5
-
             ),
 
             "macd": round(
-
                 macd_value,
-
                 6
-
             ),
 
             "macd_signal": round(
-
                 macd_signal_value,
-
                 6
-
             ),
 
             "support": round(
-
                 support,
-
                 5
-
             ),
 
             "resistance": round(
-
                 resistance,
-
                 5
-
             ),
         }
-
 
     # =====================================================
     # TAKE PROFIT / STOP LOSS
@@ -1212,42 +1070,29 @@ def get_signal(
 
     sl_distance = 25 * pip
 
-
     if signal == "BUY":
 
         take_profit = round(
-
             price + tp_distance,
-
             5
         )
-
 
         stop_loss = round(
-
             price - sl_distance,
-
             5
         )
-
 
     else:
 
         take_profit = round(
-
             price - tp_distance,
-
             5
         )
-
 
         stop_loss = round(
-
             price + sl_distance,
-
             5
         )
-
 
     # =====================================================
     # FINAL RESULT
@@ -1260,9 +1105,7 @@ def get_signal(
         "signal": signal,
 
         "entry": round(
-
             price,
-
             5
         ),
 
@@ -1273,55 +1116,41 @@ def get_signal(
         "trend": trend,
 
         "rsi": round(
-
             rsi_value,
-
             2
         ),
 
         "ema50": round(
-
             ema50,
-
             5
         ),
 
         "macd": round(
-
             macd_value,
-
             6
         ),
 
         "macd_signal": round(
-
             macd_signal_value,
-
             6
         ),
 
         "support": round(
-
             support,
-
             5
         ),
 
         "resistance": round(
-
             resistance,
-
             5
         ),
 
         "confidence": confidence,
 
         "reason": (
-
             "EMA + RSI + MACD + "
-
             "support/resistance confirmations"
         ),
 
         "timeframe": timeframe,
-}
+        }
