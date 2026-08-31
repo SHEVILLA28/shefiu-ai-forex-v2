@@ -1,419 +1,144 @@
 import os
-import time
-import threading
-from datetime import datetime, timezone
-
 import requests
 import pandas as pd
 
 
 # =========================================================
-# CONFIGURATION
+# TWELVE DATA SETTINGS
 # =========================================================
 
-API_KEY = os.getenv("TWELVE_DATA_API_KEY")
+API_KEY = os.getenv(
+    "TWELVE_DATA_API_KEY"
+)
 
-MIN_CANDLES = 80
-MAX_DATA_AGE_MINUTES = 15
+BASE_URL = (
+    "https://api.twelvedata.com/time_series"
+)
 
-
-# =========================================================
-# MARKET DATA CACHE + RATE LIMIT PROTECTION
-# =========================================================
-
-DATA_REQUEST_LOCK = threading.Lock()
-
-LAST_DATA_REQUEST_TIME = 0.0
-
-# Minimum time between REAL API requests
-MIN_REQUEST_INTERVAL_SECONDS = 10
-
-# Cache downloaded market data
-DATA_CACHE = {}
-
-# How long cached data can be reused
-CACHE_SECONDS = 120
-
-# Rate-limit cooldown
-RATE_LIMIT_COOLDOWN_SECONDS = 60
-
-RATE_LIMIT_UNTIL = 0.0
+MIN_CANDLES = 100
 
 
 # =========================================================
-# MARKET DATA REQUEST
+# TIMEFRAME CONVERSION
 # =========================================================
 
-def market_data_request(url, params):
+TIMEFRAME_MAP = {
 
-    global LAST_DATA_REQUEST_TIME
-    global RATE_LIMIT_UNTIL
+    "1M": "1min",
 
-    cache_key = (
-        params.get("symbol"),
-        params.get("interval"),
-        params.get("outputsize"),
-    )
+    "5M": "5min",
 
-    now = time.monotonic()
-
-    # =====================================================
-    # CHECK CACHE FIRST
-    # =====================================================
-
-    cached = DATA_CACHE.get(cache_key)
-
-    if cached:
-
-        cached_time, cached_data = cached
-
-        if now - cached_time < CACHE_SECONDS:
-
-            print(
-                f"Using cached market data: "
-                f"{params.get('symbol')}"
-            )
-
-            return cached_data
-
-    # =====================================================
-    # ONLY ONE REAL API REQUEST AT A TIME
-    # =====================================================
-
-    with DATA_REQUEST_LOCK:
-
-        now = time.monotonic()
-
-        # =================================================
-        # CHECK RATE LIMIT COOLDOWN
-        # =================================================
-
-        if now < RATE_LIMIT_UNTIL:
-
-            remaining = RATE_LIMIT_UNTIL - now
-
-            print(
-                f"API cooldown active. "
-                f"{remaining:.0f} seconds remaining."
-            )
-
-            return {
-                "status": "error",
-                "message": (
-                    "Rate limit reached. "
-                    f"Please wait about {int(remaining) + 1} seconds."
-                )
-            }
-
-        # =================================================
-        # CHECK CACHE AGAIN AFTER LOCK
-        # =================================================
-
-        cached = DATA_CACHE.get(cache_key)
-
-        if cached:
-
-            cached_time, cached_data = cached
-
-            if now - cached_time < CACHE_SECONDS:
-
-                print(
-                    f"Using cached market data: "
-                    f"{params.get('symbol')}"
-                )
-
-                return cached_data
-
-        # =================================================
-        # REQUEST SPACING
-        # =================================================
-
-        elapsed = (
-            now - LAST_DATA_REQUEST_TIME
-        )
-
-        if elapsed < MIN_REQUEST_INTERVAL_SECONDS:
-
-            wait_time = (
-                MIN_REQUEST_INTERVAL_SECONDS
-                - elapsed
-            )
-
-            print(
-                f"Waiting {wait_time:.1f} seconds "
-                f"before next API request..."
-            )
-
-            time.sleep(wait_time)
-
-        # =================================================
-        # MAKE MARKET REQUEST
-        # =================================================
-
-        try:
-
-            LAST_DATA_REQUEST_TIME = time.monotonic()
-
-            response = requests.get(
-                url,
-                params=params,
-                timeout=15
-            )
-
-            # =============================================
-            # HTTP RATE LIMIT
-            # =============================================
-
-            if response.status_code == 429:
-
-                RATE_LIMIT_UNTIL = (
-                    time.monotonic()
-                    + RATE_LIMIT_COOLDOWN_SECONDS
-                )
-
-                print(
-                    "Twelve Data rate limit reached."
-                )
-
-                return {
-                    "status": "error",
-                    "message": (
-                        "Rate limit reached. "
-                        "Please wait briefly and try again."
-                    )
-                }
-
-            response.raise_for_status()
-
-            data = response.json()
-
-            # =============================================
-            # API ERROR
-            # =============================================
-
-            if isinstance(data, dict):
-
-                if data.get("status") == "error":
-
-                    message = str(
-                        data.get(
-                            "message",
-                            "Market data temporarily unavailable"
-                        )
-                    )
-
-                    print(
-                        "Market API error:",
-                        message
-                    )
-
-                    # Detect rate limit messages returned
-                    # with HTTP 200
-                    message_lower = message.lower()
-
-                    if (
-                        "rate limit" in message_lower
-                        or "too many" in message_lower
-                        or "credits" in message_lower
-                    ):
-
-                        RATE_LIMIT_UNTIL = (
-                            time.monotonic()
-                            + RATE_LIMIT_COOLDOWN_SECONDS
-                        )
-
-                    return data
-
-            # =============================================
-            # CACHE SUCCESSFUL DATA
-            # =============================================
-
-            if (
-                isinstance(data, dict)
-                and data.get("values")
-            ):
-
-                DATA_CACHE[cache_key] = (
-                    time.monotonic(),
-                    data
-                )
-
-            print(
-                f"Fresh market data received: "
-                f"{params.get('symbol')}"
-            )
-
-            return data
-
-        except requests.Timeout:
-
-            print(
-                "Market request timed out."
-            )
-
-            return {
-                "status": "error",
-                "message": (
-                    "Market request timed out. "
-                    "Please try again."
-                )
-            }
-
-        except requests.RequestException as e:
-
-            print(
-                "Market request failed:",
-                e
-            )
-
-            return {
-                "status": "error",
-                "message": (
-                    "Market data request failed. "
-                    "Please try again."
-                )
-            }
-
-        except Exception as e:
-
-            print(
-                "Unexpected market error:",
-                e
-            )
-
-            return {
-                "status": "error",
-                "message": (
-                    "Market data temporarily unavailable."
-                )
-            }
-
-
-# =========================================================
-# TIMEFRAME SETTINGS
-# =========================================================
-
-TIMEFRAME_SETTINGS = {
-
-    "1M": {
-        "api_interval": "1min",
-        "minutes": 1,
-        "outputsize": 160,
-    },
-
-    "2M": {
-        "api_interval": "1min",
-        "minutes": 2,
-        "outputsize": 220,
-    },
-
-    "3M": {
-        "api_interval": "1min",
-        "minutes": 3,
-        "outputsize": 280,
-    },
-
-    "5M": {
-        "api_interval": "5min",
-        "minutes": 5,
-        "outputsize": 140,
-    },
 }
 
 
 # =========================================================
-# ALLOWED FOREX MARKETS
+# GET MARKET DATA
 # =========================================================
 
-DISPLAY_PAIRS = {
-
-    "EUR/USD": "EUR/USD",
-    "GBP/USD": "GBP/USD",
-
-    "USD/JPY": "USD/JPY",
-    "USD/CHF": "USD/CHF",
-
-    "AUD/USD": "AUD/USD",
-    "USD/CAD": "USD/CAD",
-
-    "NZD/USD": "NZD/USD",
-    "XAU/USD": "XAU/USD",
-
-    "EUR/GBP": "EUR/GBP",
-    "CHF/JPY": "CHF/JPY",
-
-    "AUD/JPY": "AUD/JPY",
-    "EUR/JPY": "EUR/JPY",
-
-    "GBP/JPY": "GBP/JPY",
-    "USD/SGD": "USD/SGD",
-}
-
-
-# =========================================================
-# NO TRADE RESULT
-# =========================================================
-
-def no_trade(
+def get_market_data(
     pair,
-    reason="Conditions are not strong enough",
-    timeframe=None
+    timeframe
 ):
 
-    return {
+    interval = TIMEFRAME_MAP.get(
+        timeframe,
+        "5min"
+    )
 
-        "pair": DISPLAY_PAIRS.get(
-            pair,
-            pair
-        ),
+    params = {
 
-        "signal": "NO TRADE",
+        "symbol": pair,
 
-        "entry": None,
+        "interval": interval,
 
-        "take_profit": None,
+        "outputsize": 150,
 
-        "stop_loss": None,
+        "apikey": API_KEY,
 
-        "trend": "WAIT",
-
-        "rsi": None,
-
-        "ema50": None,
-
-        "macd": None,
-
-        "macd_signal": None,
-
-        "support": None,
-
-        "resistance": None,
-
-        "confidence": 0,
-
-        "reason": reason,
-
-        "timeframe": timeframe,
     }
 
+    try:
+
+        response = requests.get(
+
+            BASE_URL,
+
+            params=params,
+
+            timeout=30
+
+        )
+
+        data = response.json()
+
+    except Exception as e:
+
+        print(
+            "Market request error:",
+            e
+        )
+
+        return None
+
+    if "values" not in data:
+
+        print(
+            "Twelve Data error:",
+            data
+        )
+
+        return None
+
+    try:
+
+        df = pd.DataFrame(
+            data["values"]
+        )
+
+        df["datetime"] = pd.to_datetime(
+            df["datetime"]
+        )
+
+        df = df.sort_values(
+            "datetime"
+        )
+
+        for column in [
+
+            "open",
+            "high",
+            "low",
+            "close"
+
+        ]:
+
+            df[column] = pd.to_numeric(
+                df[column],
+                errors="coerce"
+            )
+
+        df = df.dropna()
+
+        return df
+
+    except Exception as e:
+
+        print(
+            "Data processing error:",
+            e
+        )
+
+        return None
+
 
 # =========================================================
-# EMA
+# CALCULATE RSI
 # =========================================================
 
-def ema(series, period):
-
-    return series.ewm(
-        span=period,
-        adjust=False
-    ).mean()
-
-
-# =========================================================
-# RSI
-# =========================================================
-
-def rsi(series, period=14):
+def calculate_rsi(
+    series,
+    period=14
+):
 
     delta = series.diff()
 
@@ -425,175 +150,28 @@ def rsi(series, period=14):
         upper=0
     )
 
-    avg_gain = gain.ewm(
-        alpha=1 / period,
-        adjust=False,
-        min_periods=period
+    avg_gain = gain.rolling(
+        window=period
     ).mean()
 
-    avg_loss = loss.ewm(
-        alpha=1 / period,
-        adjust=False,
-        min_periods=period
+    avg_loss = loss.rolling(
+        window=period
     ).mean()
 
-    avg_loss = avg_loss.replace(
+    rs = avg_gain / avg_loss.replace(
         0,
-        pd.NA
+        0.000001
     )
 
-    rs = avg_gain / avg_loss
-
-    result = 100 - (
+    rsi = 100 - (
         100 / (1 + rs)
     )
 
-    return result.fillna(100)
+    return rsi
 
 
 # =========================================================
-# MACD
-# =========================================================
-
-def macd(series):
-
-    ema12 = ema(
-        series,
-        12
-    )
-
-    ema26 = ema(
-        series,
-        26
-    )
-
-    macd_line = (
-        ema12 - ema26
-    )
-
-    signal_line = ema(
-        macd_line,
-        9
-    )
-
-    histogram = (
-        macd_line - signal_line
-    )
-
-    return (
-        macd_line,
-        signal_line,
-        histogram
-    )
-
-
-# =========================================================
-# PIP SIZE
-# =========================================================
-
-def pip_size(pair):
-
-    normalized = DISPLAY_PAIRS.get(
-        pair,
-        pair
-    ).upper()
-
-    if "XAU/" in normalized:
-
-        return 0.01
-
-    if "JPY" in normalized:
-
-        return 0.01
-
-    return 0.0001
-
-
-# =========================================================
-# NORMALIZE TIMEFRAME
-# =========================================================
-
-def normalize_timeframe(timeframe):
-
-    if timeframe is None:
-
-        return "5M"
-
-    value = str(
-        timeframe
-    ).strip().upper()
-
-    aliases = {
-
-        "1": "1M",
-        "1M": "1M",
-        "1 MIN": "1M",
-        "1MIN": "1M",
-
-        "2": "2M",
-        "2M": "2M",
-        "2 MIN": "2M",
-        "2MIN": "2M",
-
-        "3": "3M",
-        "3M": "3M",
-        "3 MIN": "3M",
-        "3MIN": "3M",
-
-        "5": "5M",
-        "5M": "5M",
-        "5 MIN": "5M",
-        "5MIN": "5M",
-    }
-
-    return aliases.get(
-        value,
-        "5M"
-    )
-
-
-# =========================================================
-# RESAMPLE MINUTES
-# =========================================================
-
-def resample_minutes(df, minutes):
-
-    if minutes == 1:
-
-        return df
-
-    working = (
-        df.set_index(
-            "datetime"
-        )
-        .sort_index()
-    )
-
-    rule = f"{minutes}min"
-
-    resampled = (
-        working.resample(
-            rule,
-            label="right",
-            closed="right"
-        )
-        .agg(
-            {
-                "open": "first",
-                "high": "max",
-                "low": "min",
-                "close": "last",
-            }
-        )
-        .dropna()
-        .reset_index()
-    )
-
-    return resampled
-
-
-# =========================================================
-# MAIN SIGNAL FUNCTION
+# CALCULATE SIGNAL
 # =========================================================
 
 def get_signal(
@@ -601,660 +179,348 @@ def get_signal(
     timeframe="5M"
 ):
 
-    # =====================================================
-    # API KEY CHECK
-    # =====================================================
-
     if not API_KEY:
 
-        raise RuntimeError(
-            "TWELVE_DATA_API_KEY is missing "
-            "in Render Environment"
-        )
+        return {
 
-    # =====================================================
-    # PAIR CHECK
-    # =====================================================
+            "pair": pair,
 
-    pair = pair.strip().upper()
+            "timeframe": timeframe,
 
-    display_pair = DISPLAY_PAIRS.get(
-        pair
-    )
+            "signal": "NO TRADE",
 
-    if not display_pair:
+            "trend": "WAIT",
 
-        return no_trade(
-            pair,
-            "Pair is not in the allowed market list",
-            timeframe
-        )
+            "rsi": "N/A",
 
-    # =====================================================
-    # TIMEFRAME
-    # =====================================================
+            "confidence": 0,
 
-    timeframe = normalize_timeframe(
+            "reason": (
+                "TWELVE_DATA_API_KEY "
+                "is not configured."
+            )
+
+        }
+
+    df = get_market_data(
+        pair,
         timeframe
     )
 
-    settings = TIMEFRAME_SETTINGS[
-        timeframe
-    ]
+    if df is None:
 
-    minutes = settings[
-        "minutes"
-    ]
+        return {
 
-    # =====================================================
-    # MARKET CLOSED CHECK
-    # =====================================================
+            "pair": pair,
 
-    now = datetime.now(
-        timezone.utc
-    )
+            "timeframe": timeframe,
 
-    if now.weekday() >= 5:
+            "signal": "NO TRADE",
 
-        return no_trade(
-            display_pair,
-            "Market closed",
-            timeframe
-        )
+            "trend": "WAIT",
 
-    # =====================================================
-    # TWELVE DATA REQUEST
-    # =====================================================
+            "rsi": "N/A",
 
-    url = (
-        "https://api.twelvedata.com/"
-        "time_series"
-    )
+            "confidence": 0,
 
-    params = {
+            "reason": (
+                "Could not get market data. "
+                "Check API connection or limit."
+            )
 
-        "symbol": display_pair,
-
-        "interval": settings[
-            "api_interval"
-        ],
-
-        "outputsize": settings[
-            "outputsize"
-        ],
-
-        "apikey": API_KEY,
-    }
-
-    data = market_data_request(
-        url,
-        params
-    )
-
-    # =====================================================
-    # API ERROR
-    # =====================================================
-
-    if not isinstance(data, dict):
-
-        return no_trade(
-            display_pair,
-            "Invalid market data response",
-            timeframe
-        )
-
-    if data.get("status") == "error":
-
-        message = data.get(
-            "message",
-            "Market data temporarily unavailable"
-        )
-
-        return no_trade(
-            display_pair,
-            f"Market data unavailable: {message}",
-            timeframe
-        )
-
-    # =====================================================
-    # GET MARKET VALUES
-    # =====================================================
-
-    rows = data.get(
-        "values"
-    ) or []
-
-    if len(rows) < MIN_CANDLES:
-
-        return no_trade(
-            display_pair,
-            "Not enough market data",
-            timeframe
-        )
-
-    # =====================================================
-    # DATAFRAME
-    # =====================================================
-
-    df = pd.DataFrame(
-        rows
-    )
-
-    required = {
-
-        "datetime",
-        "open",
-        "high",
-        "low",
-        "close",
-    }
-
-    if not required.issubset(
-        df.columns
-    ):
-
-        return no_trade(
-            display_pair,
-            "Incomplete market data",
-            timeframe
-        )
-
-    df["datetime"] = pd.to_datetime(
-        df["datetime"],
-        utc=True,
-        errors="coerce"
-    )
-
-    for column in [
-        "open",
-        "high",
-        "low",
-        "close",
-    ]:
-
-        df[column] = pd.to_numeric(
-            df[column],
-            errors="coerce"
-        )
-
-    df = df.dropna(
-        subset=[
-            "datetime",
-            "open",
-            "high",
-            "low",
-            "close",
-        ]
-    )
-
-    df = (
-        df.sort_values(
-            "datetime"
-        )
-        .reset_index(
-            drop=True
-        )
-    )
-
-    # =====================================================
-    # BUILD 2M / 3M CANDLES
-    # =====================================================
-
-    if minutes in {
-        2,
-        3,
-    }:
-
-        df = resample_minutes(
-            df,
-            minutes
-        )
+        }
 
     if len(df) < MIN_CANDLES:
 
-        return no_trade(
-            display_pair,
-            "Not enough valid timeframe candles",
-            timeframe
-        )
+        return {
 
-    # =====================================================
-    # DATA FRESHNESS
-    # =====================================================
+            "pair": pair,
 
-    latest_time = (
-        df["datetime"]
-        .iloc[-1]
-        .to_pydatetime()
-    )
+            "timeframe": timeframe,
 
-    age_minutes = (
-        now - latest_time
-    ).total_seconds() / 60
+            "signal": "NO TRADE",
 
-    if age_minutes > MAX_DATA_AGE_MINUTES:
+            "trend": "WAIT",
 
-        return no_trade(
-            display_pair,
-            "Market data is stale / market may be closed",
-            timeframe
-        )
+            "rsi": "N/A",
 
-    # =====================================================
-    # PRICE DATA
-    # =====================================================
+            "confidence": 0,
 
-    close = df["close"]
+            "reason": (
+                "Not enough market candles."
+            )
 
-    high = df["high"]
+        }
 
-    low = df["low"]
+    df["EMA20"] = df["close"].ewm(
+        span=20,
+        adjust=False
+    ).mean()
 
-    # =====================================================
-    # INDICATORS
-    # =====================================================
+    df["EMA50"] = df["close"].ewm(
+        span=50,
+        adjust=False
+    ).mean()
 
-    df["ema20"] = ema(
-        close,
-        20
-    )
-
-    df["ema50"] = ema(
-        close,
-        50
-    )
-
-    df["rsi"] = rsi(
-        close,
+    df["RSI"] = calculate_rsi(
+        df["close"],
         14
     )
 
-    (
-        df["macd"],
-        df["macd_signal"],
-        df["macd_hist"]
+    df["EMA12"] = df["close"].ewm(
+        span=12,
+        adjust=False
+    ).mean()
 
-    ) = macd(
-        close
+    df["EMA26"] = df["close"].ewm(
+        span=26,
+        adjust=False
+    ).mean()
+
+    df["MACD"] = (
+        df["EMA12"]
+        -
+        df["EMA26"]
     )
 
-    latest = df.iloc[-1]
+    df["MACD_SIGNAL"] = df["MACD"].ewm(
+        span=9,
+        adjust=False
+    ).mean()
 
-    previous = df.iloc[-2]
+    last = df.iloc[-1]
 
-    # =====================================================
-    # CURRENT VALUES
-    # =====================================================
-
-    price = float(
-        latest["close"]
+    close = float(
+        last["close"]
     )
 
     ema20 = float(
-        latest["ema20"]
+        last["EMA20"]
     )
 
     ema50 = float(
-        latest["ema50"]
+        last["EMA50"]
     )
 
-    rsi_value = float(
-        latest["rsi"]
+    rsi = float(
+        last["RSI"]
     )
 
-    macd_value = float(
-        latest["macd"]
+    macd = float(
+        last["MACD"]
     )
 
-    macd_signal_value = float(
-        latest["macd_signal"]
+    macd_signal = float(
+        last["MACD_SIGNAL"]
     )
 
-    # =====================================================
-    # SUPPORT / RESISTANCE
-    # =====================================================
-
-    support = float(
-        low.tail(20).min()
+    recent_high = float(
+        df["high"].tail(20).max()
     )
 
-    resistance = float(
-        high.tail(20).max()
+    recent_low = float(
+        df["low"].tail(20).min()
     )
 
-    # =====================================================
-    # SCORES
-    # =====================================================
-
-    buy_score = 0
-
-    sell_score = 0
 
     # =====================================================
     # TREND
     # =====================================================
 
-    if (
-        price > ema50
-        and
-        ema20 > ema50
-    ):
-
-        buy_score += 2
+    if ema20 > ema50:
 
         trend = "BUY"
 
-    elif (
-        price < ema50
-        and
-        ema20 < ema50
-    ):
-
-        sell_score += 2
+    elif ema20 < ema50:
 
         trend = "SELL"
 
     else:
 
-        trend = "SIDEWAYS"
+        trend = "WAIT"
 
-    # =====================================================
-    # EMA MOMENTUM
-    # =====================================================
-
-    previous_ema20 = float(
-        previous["ema20"]
-    )
-
-    previous_ema50 = float(
-        previous["ema50"]
-    )
-
-    if (
-        ema20 > previous_ema20
-        and
-        ema50 >= previous_ema50
-    ):
-
-        buy_score += 1
-
-    elif (
-        ema20 < previous_ema20
-        and
-        ema50 <= previous_ema50
-    ):
-
-        sell_score += 1
-
-    # =====================================================
-    # RSI
-    # =====================================================
-
-    if 52 <= rsi_value < 70:
-
-        buy_score += 1
-
-    elif 30 < rsi_value <= 48:
-
-        sell_score += 1
-
-    # =====================================================
-    # MACD
-    # =====================================================
-
-    previous_macd = float(
-        previous["macd"]
-    )
-
-    previous_signal = float(
-        previous["macd_signal"]
-    )
-
-    if (
-        macd_value > macd_signal_value
-        and
-        previous_macd <= previous_signal
-    ):
-
-        buy_score += 2
-
-    elif (
-        macd_value < macd_signal_value
-        and
-        previous_macd >= previous_signal
-    ):
-
-        sell_score += 2
-
-    elif macd_value > macd_signal_value:
-
-        buy_score += 1
-
-    elif macd_value < macd_signal_value:
-
-        sell_score += 1
-
-    # =====================================================
-    # SUPPORT / RESISTANCE CONFIRMATION
-    # =====================================================
-
-    pip = pip_size(
-        display_pair
-    )
-
-    near_support = (
-        price <= support + (
-            15 * pip
-        )
-    )
-
-    near_resistance = (
-        price >= resistance - (
-            15 * pip
-        )
-    )
-
-    if (
-        near_support
-        and
-        price > support
-    ):
-
-        buy_score += 1
-
-    if (
-        near_resistance
-        and
-        price < resistance
-    ):
-
-        sell_score += 1
 
     # =====================================================
     # BUY SIGNAL
     # =====================================================
 
     if (
-        buy_score >= 4
+
+        trend == "BUY"
+
         and
-        buy_score > sell_score
+
+        macd > macd_signal
+
         and
-        not near_resistance
+
+        rsi >= 50
+
+        and
+
+        rsi < 70
+
     ):
 
-        signal = "BUY"
+        risk = close - recent_low
 
-        confidence = min(
-            95,
-            55 + buy_score * 7
+        if risk <= 0:
+
+            risk = close * 0.002
+
+        stop_loss = close - risk
+
+        take_profit = close + (
+            risk * 1.5
         )
-
-        trend = "BUY"
-
-    # =====================================================
-    # SELL SIGNAL
-    # =====================================================
-
-    elif (
-        sell_score >= 4
-        and
-        sell_score > buy_score
-        and
-        not near_support
-    ):
-
-        signal = "SELL"
-
-        confidence = min(
-            95,
-            55 + sell_score * 7
-        )
-
-        trend = "SELL"
-
-    # =====================================================
-    # NO TRADE
-    # =====================================================
-
-    else:
 
         return {
 
-            **no_trade(
-                display_pair,
-                "Indicators are not strongly aligned; WAIT",
-                timeframe
-            ),
+            "pair": pair,
+
+            "timeframe": timeframe,
+
+            "signal": "BUY",
 
             "entry": round(
-                price,
+                close,
+                5
+            ),
+
+            "take_profit": round(
+                take_profit,
+                5
+            ),
+
+            "stop_loss": round(
+                stop_loss,
                 5
             ),
 
             "trend": trend,
 
             "rsi": round(
-                rsi_value,
+                rsi,
                 2
             ),
 
-            "ema50": round(
-                ema50,
-                5
-            ),
+            "confidence": 70,
 
-            "macd": round(
-                macd_value,
-                6
-            ),
+            "reason": (
+                "Bullish EMA trend with "
+                "MACD confirmation and "
+                "RSI support."
+            )
 
-            "macd_signal": round(
-                macd_signal_value,
-                6
-            ),
-
-            "support": round(
-                support,
-                5
-            ),
-
-            "resistance": round(
-                resistance,
-                5
-            ),
-
-            "confidence": 0,
         }
 
-    # =====================================================
-    # TAKE PROFIT / STOP LOSS
-    # =====================================================
-
-    tp_distance = 50 * pip
-
-    sl_distance = 25 * pip
-
-    if signal == "BUY":
-
-        take_profit = round(
-            price + tp_distance,
-            5
-        )
-
-        stop_loss = round(
-            price - sl_distance,
-            5
-        )
-
-    else:
-
-        take_profit = round(
-            price - tp_distance,
-            5
-        )
-
-        stop_loss = round(
-            price + sl_distance,
-            5
-        )
 
     # =====================================================
-    # FINAL RESULT
+    # SELL SIGNAL
+    # =====================================================
+
+    if (
+
+        trend == "SELL"
+
+        and
+
+        macd < macd_signal
+
+        and
+
+        rsi <= 50
+
+        and
+
+        rsi > 30
+
+    ):
+
+        risk = recent_high - close
+
+        if risk <= 0:
+
+            risk = close * 0.002
+
+        stop_loss = close + risk
+
+        take_profit = close - (
+            risk * 1.5
+        )
+
+        return {
+
+            "pair": pair,
+
+            "timeframe": timeframe,
+
+            "signal": "SELL",
+
+            "entry": round(
+                close,
+                5
+            ),
+
+            "take_profit": round(
+                take_profit,
+                5
+            ),
+
+            "stop_loss": round(
+                stop_loss,
+                5
+            ),
+
+            "trend": trend,
+
+            "rsi": round(
+                rsi,
+                2
+            ),
+
+            "confidence": 70,
+
+            "reason": (
+                "Bearish EMA trend with "
+                "MACD confirmation and "
+                "RSI support."
+            )
+
+        }
+
+
+    # =====================================================
+    # NO TRADE
     # =====================================================
 
     return {
 
-        "pair": display_pair,
+        "pair": pair,
 
-        "signal": signal,
+        "timeframe": timeframe,
 
-        "entry": round(
-            price,
-            5
-        ),
+        "signal": "NO TRADE",
 
-        "take_profit": take_profit,
+        "entry": "N/A",
 
-        "stop_loss": stop_loss,
+        "take_profit": "N/A",
+
+        "stop_loss": "N/A",
 
         "trend": trend,
 
         "rsi": round(
-            rsi_value,
+            rsi,
             2
         ),
 
-        "ema50": round(
-            ema50,
-            5
-        ),
-
-        "macd": round(
-            macd_value,
-            6
-        ),
-
-        "macd_signal": round(
-            macd_signal_value,
-            6
-        ),
-
-        "support": round(
-            support,
-            5
-        ),
-
-        "resistance": round(
-            resistance,
-            5
-        ),
-
-        "confidence": confidence,
+        "confidence": 0,
 
         "reason": (
-            "EMA + EMA momentum + RSI + "
-            "MACD + support/resistance confirmations"
-        ),
+            "Market conditions do not "
+            "currently meet the BUY or "
+            "SELL confirmation rules."
+        )
 
-        "timeframe": timeframe,
-                        }
+        }
