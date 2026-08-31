@@ -262,6 +262,11 @@ def send_menu(chat_id):
 
         [
             {"text": "⏱️ 1 MIN"},
+            {"text": "⏱️ 2 MIN"},
+        ],
+
+        [
+            {"text": "⏱️ 3 MIN"},
             {"text": "⏱️ 5 MIN"},
         ],
 
@@ -289,6 +294,9 @@ def send_menu(chat_id):
         "supported Forex pairs.\n\n"
 
         "⚠️ NO OTC MARKETS.\n\n"
+
+        "⚠️ Please wait for an analysis "
+        "to finish before requesting another pair.\n\n"
 
         "⚠️ Signals are not guaranteed profit."
 
@@ -351,6 +359,10 @@ def format_signal(
 
     )
 
+    # =====================================================
+    # NO TRADE
+    # =====================================================
+
     if signal_type == "NO TRADE":
 
         return (
@@ -367,9 +379,6 @@ def format_signal(
             f"📈 Trend: "
             f"{signal.get('trend', 'WAIT')}\n\n"
 
-            f"📊 RSI: "
-            f"{signal.get('rsi', 'N/A')}\n\n"
-
             f"📝 Reason: "
             f"{signal.get('reason', 'WAIT')}\n\n"
 
@@ -377,6 +386,10 @@ def format_signal(
             "No guaranteed profit."
 
         )
+
+    # =====================================================
+    # SIGNAL ICON
+    # =====================================================
 
     if signal_type == "BUY":
 
@@ -474,9 +487,13 @@ def analyze_pair(
     if now - previous_time < MANUAL_REQUEST_COOLDOWN:
 
         remaining = int(
+
             MANUAL_REQUEST_COOLDOWN
+
             -
+
             (now - previous_time)
+
         )
 
         send_message(
@@ -484,11 +501,13 @@ def analyze_pair(
             chat_id,
 
             (
+
                 f"⏳ Please wait about "
                 f"{remaining} seconds before "
                 f"checking {pair} again.\n\n"
 
                 "This protects the market-data API."
+
             )
 
         )
@@ -504,10 +523,13 @@ def analyze_pair(
             chat_id,
 
             (
+
                 "⏳ Another Forex analysis is "
                 "currently running.\n\n"
 
-                "Please wait for it to finish."
+                "Please wait for it to finish "
+                "before selecting another pair."
+
             )
 
         )
@@ -523,12 +545,14 @@ def analyze_pair(
             chat_id,
 
             (
+
                 f"🔎 Analyzing {pair}...\n\n"
 
                 f"⏱️ Timeframe: "
                 f"{timeframe}\n\n"
 
                 "Please wait."
+
             )
 
         )
@@ -565,10 +589,12 @@ def analyze_pair(
             chat_id,
 
             (
+
                 f"⚠️ Could not analyze "
                 f"{pair}.\n\n"
 
                 "Please wait a little and try again."
+
             )
 
         )
@@ -591,15 +617,18 @@ def analyze_all(chat_id):
         chat_id,
 
         (
+
             "📊 SHEFIU AI FOREX V2\n\n"
 
             "🔎 Checking all Forex pairs.\n\n"
 
-            "⚠️ Requests are slowed down "
-            "to protect the market-data API.\n\n"
+            "⚠️ This takes time because "
+            "requests are slowed down to "
+            "protect the market-data API.\n\n"
 
             f"⏱️ Timeframe: "
             f"{timeframe}"
+
         )
 
     )
@@ -779,8 +808,10 @@ def automatic_scan_loop():
             timeframe = CURRENT_TIMEFRAME
 
             print(
+
                 f"🔎 Automatic scan started: "
                 f"{timeframe}"
+
             )
 
             for pair in PAIRS:
@@ -864,9 +895,11 @@ def automatic_scan_loop():
                 except Exception as e:
 
                     print(
+
                         f"Automatic scan error "
                         f"for {pair}:",
                         e
+
                     )
 
                 finally:
@@ -890,6 +923,10 @@ def automatic_scan_loop():
 
             time.sleep(30)
 
+
+# =========================================================
+# START AUTOMATIC SCANNER
+# =========================================================
 
 threading.Thread(
 
@@ -936,11 +973,6 @@ def handle_update(update):
 
         return
 
-    # Only allow your configured Telegram chat.
-    if str(chat_id) != str(CHAT_ID):
-
-        return
-
     print(
         f"Telegram command: {text}"
     )
@@ -961,6 +993,10 @@ def handle_update(update):
 
         "⏱️ 1 MIN": "1M",
 
+        "⏱️ 2 MIN": "2M",
+
+        "⏱️ 3 MIN": "3M",
+
         "⏱️ 5 MIN": "5M",
 
     }
@@ -978,11 +1014,13 @@ def handle_update(update):
             chat_id,
 
             (
+
                 f"⏱️ Timeframe changed to "
                 f"{CURRENT_TIMEFRAME}.\n\n"
 
                 "Manual and automatic analysis "
                 "will use this timeframe."
+
             )
 
         )
@@ -1002,13 +1040,16 @@ def handle_update(update):
             chat_id,
 
             (
+
                 "🟢 AUTOMATIC SCANNING: ON\n\n"
 
                 f"⏱️ Timeframe: "
                 f"{CURRENT_TIMEFRAME}\n\n"
 
                 "The bot will scan Forex pairs "
-                "slowly to protect the API."
+                "slowly to protect the "
+                "market-data API."
+
             )
 
         )
@@ -1026,10 +1067,12 @@ def handle_update(update):
             chat_id,
 
             (
+
                 "🔴 AUTOMATIC SCANNING: OFF\n\n"
 
                 "Manual Forex analysis "
                 "is still available."
+
             )
 
         )
@@ -1071,10 +1114,12 @@ def handle_update(update):
         chat_id,
 
         (
+
             "❓ I don't understand that command.\n\n"
 
             "Press /menu to open the "
             "Forex menu."
+
         )
 
     )
@@ -1127,9 +1172,11 @@ def telegram_loop():
                 for update in updates:
 
                     offset = (
+
                         update["update_id"]
-                        +
-                        1
+
+                        + 1
+
                     )
 
                     handle_update(
@@ -1185,8 +1232,6 @@ print(
 
 print("=" * 50)
 
-
 send_menu(CHAT_ID)
-
 
 telegram_loop()
