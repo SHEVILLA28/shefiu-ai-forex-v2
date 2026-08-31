@@ -25,10 +25,6 @@ MIN_REQUEST_INTERVAL_SECONDS = 8
 
 
 def market_data_request(url, params):
-    """
-    Request Twelve Data market data while spacing requests
-    apart and retrying temporary 429 rate-limit responses.
-    """
 
     global LAST_DATA_REQUEST_TIME
 
@@ -186,15 +182,15 @@ DISPLAY_PAIRS = {
 
     "EUR/GBP": "EUR/GBP",
 
-    "EUR/JPY": "EUR/JPY",
-
     "CHF/JPY": "CHF/JPY",
 
     "AUD/JPY": "AUD/JPY",
 
+    "EUR/JPY": "EUR/JPY",
+
     "GBP/JPY": "GBP/JPY",
 
-    "EUR/AUD": "EUR/AUD",
+    "USD/SGD": "USD/SGD",
 }
 
 
@@ -421,11 +417,6 @@ def resample_minutes(
     minutes
 ):
 
-    """
-    Build 2-minute or 3-minute candles from
-    Twelve Data 1-minute candles.
-    """
-
     if minutes == 1:
 
         return df
@@ -472,23 +463,6 @@ def get_signal(
     pair,
     timeframe="5M"
 ):
-
-    """
-    Main signal function used by main.py.
-
-    Supported:
-
-        1M
-        2M
-        3M
-        5M
-
-    Returns:
-
-        BUY
-        SELL
-        NO TRADE
-    """
 
     if not API_KEY:
 
@@ -542,8 +516,6 @@ def get_signal(
     # TWELVE DATA REQUEST
     # =====================================================
 
-    symbol = display_pair
-
     url = (
         "https://api.twelvedata.com/"
         "time_series"
@@ -551,7 +523,7 @@ def get_signal(
 
     params = {
 
-        "symbol": symbol,
+        "symbol": display_pair,
 
         "interval": settings[
             "api_interval"
@@ -649,13 +621,11 @@ def get_signal(
 
     df = df.dropna(
         subset=[
-
             "datetime",
             "open",
             "high",
             "low",
             "close",
-
         ]
     )
 
@@ -830,17 +800,45 @@ def get_signal(
         trend = "SIDEWAYS"
 
     # =====================================================
-    # RSI
+    # EMA MOMENTUM
     # =====================================================
 
+    previous_ema20 = float(
+        previous["ema20"]
+    )
+
+    previous_ema50 = float(
+        previous["ema50"]
+    )
+
     if (
-        50 <= rsi_value < 70
+        ema20 > previous_ema20
+        and
+        ema50 >= previous_ema50
     ):
 
         buy_score += 1
 
     elif (
-        30 < rsi_value <= 50
+        ema20 < previous_ema20
+        and
+        ema50 <= previous_ema50
+    ):
+
+        sell_score += 1
+
+    # =====================================================
+    # RSI
+    # =====================================================
+
+    if (
+        52 <= rsi_value < 70
+    ):
+
+        buy_score += 1
+
+    elif (
+        30 < rsi_value <= 48
     ):
 
         sell_score += 1
@@ -918,11 +916,11 @@ def get_signal(
         sell_score += 1
 
     # =====================================================
-    # STRONG BUY
+    # BUY SIGNAL
     # =====================================================
 
     if (
-        buy_score >= 5
+        buy_score >= 4
         and
         buy_score > sell_score
         and
@@ -933,17 +931,17 @@ def get_signal(
 
         confidence = min(
             95,
-            60 + buy_score * 5
+            55 + buy_score * 7
         )
 
         trend = "BUY"
 
     # =====================================================
-    # STRONG SELL
+    # SELL SIGNAL
     # =====================================================
 
     elif (
-        sell_score >= 5
+        sell_score >= 4
         and
         sell_score > buy_score
         and
@@ -954,7 +952,7 @@ def get_signal(
 
         confidence = min(
             95,
-            60 + sell_score * 5
+            55 + sell_score * 7
         )
 
         trend = "SELL"
@@ -1009,6 +1007,9 @@ def get_signal(
                 resistance,
                 5
             ),
+
+            "confidence": 0,
+
         }
 
     # =====================================================
