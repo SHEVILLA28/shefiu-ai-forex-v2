@@ -7,6 +7,7 @@ import requests
 
 from config import BOT_TOKEN, CHAT_ID
 from signals import get_signal
+from telegram_bot import run_telegram_bot
 
 
 # =========================================================
@@ -449,8 +450,6 @@ def automatic_scanner():
                     )
 
 
-                    # Wait after errors too
-
                     time.sleep(
                         API_REQUEST_DELAY
                     )
@@ -504,7 +503,9 @@ if __name__ == "__main__":
     )
 
 
-    # Start Render health server
+    # =====================================
+    # START RENDER HEALTH SERVER
+    # =====================================
 
     health_thread = threading.Thread(
 
@@ -514,10 +515,31 @@ if __name__ == "__main__":
 
     )
 
-
     health_thread.start()
 
 
-    # Start automatic Forex scanner
+    # =====================================
+    # START MANUAL TELEGRAM BOT
+    # =====================================
+
+    telegram_thread = threading.Thread(
+
+        target=run_telegram_bot,
+
+        daemon=True
+
+    )
+
+    telegram_thread.start()
+
+
+    print(
+        "Manual Telegram bot started."
+    )
+
+
+    # =====================================
+    # START AUTOMATIC FOREX SCANNER
+    # =====================================
 
     automatic_scanner()
