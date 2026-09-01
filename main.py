@@ -13,31 +13,6 @@ from signals import get_signal
 # SHEFIU AI FOREX V2
 # =========================================================
 
-FOREX_PAIRS = [
-    "EUR/USD",
-    "GBP/USD",
-    "USD/JPY",
-    "USD/CHF",
-    "AUD/USD",
-    "USD/CAD",
-    "NZD/USD",
-    "XAU/USD",
-    "EUR/GBP",
-    "CHF/JPY",
-    "AUD/JPY",
-    "EUR/JPY",
-    "GBP/JPY",
-    "USD/SGD"
-]
-
-TIMEFRAME = "5M"
-
-# Scan every 5 minutes
-SCAN_INTERVAL = 300
-
-# Stores the last signal sent for each pair
-LAST_SIGNALS = {}
-
 
 # =========================================================
 # HEALTH SERVER FOR RENDER
@@ -46,30 +21,49 @@ LAST_SIGNALS = {}
 class HealthHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
+
         self.send_response(200)
-        self.send_header("Content-type", "text/plain")
+
+        self.send_header(
+            "Content-type",
+            "text/plain"
+        )
+
         self.end_headers()
 
         self.wfile.write(
             b"Forex AI Bot is running"
         )
 
+
+    # Fix Render health check HEAD request
+
     def do_HEAD(self):
+
         self.send_response(200)
-        self.send_header("Content-type", "text/plain")
+
+        self.send_header(
+            "Content-type",
+            "text/plain"
+        )
+
         self.end_headers()
 
+
+    # Hide unnecessary HTTP log messages
+
     def log_message(self, format, *args):
-        print(
-            "[HEALTH] " + (format % args),
-            flush=True
-        )
+
+        return
 
 
 def run_health_server():
 
     port = int(
-        os.environ.get("PORT", 10000)
+        os.environ.get(
+            "PORT",
+            10000
+        )
     )
 
     server = HTTPServer(
@@ -78,8 +72,7 @@ def run_health_server():
     )
 
     print(
-        f"Health server running on port {port}",
-        flush=True
+        f"Health server running on port {port}"
     )
 
     server.serve_forever()
@@ -91,62 +84,122 @@ def run_health_server():
 
 def send_telegram_message(message):
 
-    if not BOT_TOKEN:
+    if not BOT_TOKEN or not CHAT_ID:
+
         print(
-            "ERROR: BOT_TOKEN is missing.",
-            flush=True
+            "Telegram BOT_TOKEN or CHAT_ID is missing."
         )
+
         return False
 
-    if not CHAT_ID:
-        print(
-            "ERROR: CHAT_ID is missing.",
-            flush=True
-        )
-        return False
 
     url = (
         f"https://api.telegram.org/bot"
         f"{BOT_TOKEN}/sendMessage"
     )
 
+
     data = {
+
         "chat_id": CHAT_ID,
+
         "text": message
+
     }
+
 
     try:
 
         response = requests.post(
+
             url,
+
             data=data,
+
             timeout=30
+
         )
 
+
         print(
-            f"Telegram status: {response.status_code}",
-            flush=True
+            f"Telegram status: "
+            f"{response.status_code}"
         )
+
 
         if not response.ok:
 
             print(
-                f"Telegram error response: {response.text}",
-                flush=True
+                "Telegram response:",
+                response.text
             )
 
-            return False
 
-        return True
+        return response.ok
+
 
     except Exception as e:
 
         print(
-            f"Telegram connection error: {e}",
-            flush=True
+            f"Telegram error: {e}"
         )
 
         return False
+
+
+# =========================================================
+# FOREX PAIRS
+# =========================================================
+
+FOREX_PAIRS = [
+
+    "EUR/USD",
+    "GBP/USD",
+
+    "USD/JPY",
+    "USD/CHF",
+
+    "AUD/USD",
+    "USD/CAD",
+
+    "NZD/USD",
+    "XAU/USD",
+
+    "EUR/GBP",
+    "CHF/JPY",
+
+    "AUD/JPY",
+    "EUR/JPY",
+
+    "GBP/JPY",
+    "USD/SGD"
+
+]
+
+
+# =========================================================
+# BOT SETTINGS
+# =========================================================
+
+TIMEFRAME = "5M"
+
+
+# FCsAPI FREE PLAN ALLOWS ONLY 3 REQUESTS PER MINUTE
+# 22 seconds between requests keeps us safely below the limit
+
+API_REQUEST_DELAY = 22
+
+
+# Wait before starting the next complete scan
+
+SCAN_INTERVAL = 60
+
+
+# =========================================================
+# DUPLICATE SIGNAL PROTECTION
+# =========================================================
+
+LAST_SIGNALS = {}
 
 
 # =========================================================
@@ -160,47 +213,61 @@ def format_signal(result):
         "NO TRADE"
     )
 
+
     pair = result.get(
         "pair",
         "Unknown"
     )
+
 
     timeframe = result.get(
         "timeframe",
         TIMEFRAME
     )
 
+
     trend = result.get(
         "trend",
         "WAIT"
     )
+
 
     reason = result.get(
         "reason",
         "No reason available."
     )
 
+
     if signal == "BUY":
+
         signal_icon = "🟢"
 
     elif signal == "SELL":
+
         signal_icon = "🔴"
 
     else:
+
         signal_icon = "⚪"
 
 
     message = (
+
         "🤖 SHEFIU AI FOREX V2\n\n"
+
         f"📊 Pair: {pair}\n\n"
+
         f"{signal_icon} SIGNAL: {signal}\n\n"
+
         f"⏱ Timeframe: {timeframe}\n\n"
+
     )
 
 
     if signal in ["BUY", "SELL"]:
 
         message += (
+
             f"🎯 Entry: "
             f"{result.get('entry', 'N/A')}\n"
 
@@ -209,10 +276,12 @@ def format_signal(result):
 
             f"🛑 Stop Loss: "
             f"{result.get('stop_loss', 'N/A')}\n\n"
+
         )
 
 
     message += (
+
         f"📈 Trend: {trend}\n\n"
 
         f"📊 RSI: "
@@ -224,7 +293,9 @@ def format_signal(result):
         f"📝 Reason: {reason}\n\n"
 
         "⚠️ Signal only. No guaranteed profit."
+
     )
+
 
     return message
 
@@ -236,46 +307,8 @@ def format_signal(result):
 def automatic_scanner():
 
     print(
-        "========================================",
-        flush=True
+        "Automatic Forex scanner started."
     )
-
-    print(
-        "AUTOMATIC FOREX SCANNER STARTED",
-        flush=True
-    )
-
-    print(
-        "========================================",
-        flush=True
-    )
-
-
-    # Send startup confirmation
-    startup_message = (
-        "🟢 SHEFIU AI FOREX V2 IS ONLINE\n\n"
-        f"⏱ Timeframe: {TIMEFRAME}\n"
-        f"📊 Monitoring {len(FOREX_PAIRS)} Forex pairs\n\n"
-        "🤖 Automatic scanner has started."
-    )
-
-    startup_sent = send_telegram_message(
-        startup_message
-    )
-
-    if startup_sent:
-
-        print(
-            "Startup message sent to Telegram successfully.",
-            flush=True
-        )
-
-    else:
-
-        print(
-            "WARNING: Startup message was NOT sent to Telegram.",
-            flush=True
-        )
 
 
     while True:
@@ -283,18 +316,15 @@ def automatic_scanner():
         try:
 
             print(
-                "\n========================================",
-                flush=True
+                "========================================"
             )
 
             print(
-                "Starting Forex market scan...",
-                flush=True
+                "Starting Forex market scan..."
             )
 
             print(
-                "========================================",
-                flush=True
+                "========================================"
             )
 
 
@@ -303,26 +333,17 @@ def automatic_scanner():
                 try:
 
                     print(
-                        f"Analyzing {pair}...",
-                        flush=True
+                        f"Analyzing {pair}..."
                     )
 
 
                     result = get_signal(
+
                         pair,
+
                         TIMEFRAME
+
                     )
-
-
-                    if not isinstance(result, dict):
-
-                        print(
-                            f"Invalid result received for {pair}",
-                            flush=True
-                        )
-
-                        time.sleep(2)
-                        continue
 
 
                     signal = result.get(
@@ -331,17 +352,12 @@ def automatic_scanner():
                     )
 
 
-                    print(
-                        f"{pair} result: {signal}",
-                        flush=True
-                    )
-
-
                     # =====================================
-                    # SEND BUY OR SELL SIGNAL
+                    # SEND ONLY NEW SIGNALS
                     # =====================================
 
                     if signal in ["BUY", "SELL"]:
+
 
                         previous_signal = LAST_SIGNALS.get(
                             pair
@@ -350,19 +366,18 @@ def automatic_scanner():
 
                         if previous_signal != signal:
 
+
                             message = format_signal(
                                 result
                             )
 
+
                             full_message = (
+
                                 "🔔 AUTOMATIC FOREX SIGNAL\n\n"
+
                                 + message
-                            )
 
-
-                            print(
-                                f"New {signal} signal found for {pair}",
-                                flush=True
                             )
 
 
@@ -375,92 +390,135 @@ def automatic_scanner():
 
                                 LAST_SIGNALS[pair] = signal
 
+
                                 print(
-                                    f"SUCCESS: Signal sent for "
-                                    f"{pair}: {signal}",
-                                    flush=True
+
+                                    f"NEW signal sent for "
+
+                                    f"{pair}: {signal}"
+
                                 )
+
 
                             else:
 
                                 print(
-                                    f"FAILED: Could not send "
-                                    f"signal for {pair}",
-                                    flush=True
+
+                                    f"Failed to send signal "
+
+                                    f"for {pair}"
+
                                 )
 
 
                         else:
 
                             print(
+
                                 f"Duplicate signal ignored for "
-                                f"{pair}: {signal}",
-                                flush=True
+
+                                f"{pair}: {signal}"
+
                             )
 
 
                     # =====================================
-                    # NO TRADE
+                    # RESET WHEN NO TRADE
                     # =====================================
 
                     else:
 
+
+                        if LAST_SIGNALS.get(pair) is not None:
+
+
+                            print(
+
+                                f"Signal reset for {pair}. "
+
+                                "Waiting for a new setup."
+
+                            )
+
+
+                        LAST_SIGNALS[pair] = None
+
+
                         print(
-                            f"No trade setup for {pair}",
-                            flush=True
+
+                            f"No trade for {pair}"
+
                         )
 
 
-                    # Wait between API requests
-                    time.sleep(2)
+                    # =====================================
+                    # IMPORTANT:
+                    # FCsAPI RATE LIMIT PROTECTION
+                    # =====================================
+
+                    print(
+                        f"Waiting {API_REQUEST_DELAY} seconds "
+                        "before next API request..."
+                    )
+
+
+                    time.sleep(
+                        API_REQUEST_DELAY
+                    )
 
 
                 except Exception as e:
 
                     print(
-                        f"ERROR analyzing {pair}: {e}",
-                        flush=True
+
+                        f"Error analyzing "
+
+                        f"{pair}: {e}"
+
                     )
 
-                    time.sleep(2)
+
+                    # Wait even after an error
+                    # to avoid API rate limit problems
+
+                    time.sleep(
+                        API_REQUEST_DELAY
+                    )
 
 
             print(
-                "\n========================================",
-                flush=True
+                "========================================"
             )
 
             print(
-                "Scan completed.",
-                flush=True
+                "Scan completed."
             )
 
             print(
                 f"Waiting {SCAN_INTERVAL} seconds "
-                "before next scan...",
-                flush=True
+                "before next scan..."
             )
 
             print(
-                "========================================",
-                flush=True
+                "========================================"
             )
 
 
-            time.sleep(SCAN_INTERVAL)
+            time.sleep(
+                SCAN_INTERVAL
+            )
 
 
         except Exception as e:
 
             print(
-                f"SCANNER ERROR: {e}",
-                flush=True
+                f"Scanner error: {e}"
             )
 
             print(
-                "Waiting 60 seconds before retry...",
-                flush=True
+                "Waiting 60 seconds before retry..."
             )
+
 
             time.sleep(60)
 
@@ -472,19 +530,24 @@ def automatic_scanner():
 if __name__ == "__main__":
 
     print(
-        "Starting SHEFIU AI FOREX V2...",
-        flush=True
+        "Starting SHEFIU AI FOREX V2..."
     )
 
 
-    # Start Forex scanner in background
-    scanner_thread = threading.Thread(
-        target=automatic_scanner,
+    # Start Render health server
+
+    health_thread = threading.Thread(
+
+        target=run_health_server,
+
         daemon=True
+
     )
 
-    scanner_thread.start()
+
+    health_thread.start()
 
 
-    # Run Render health server in main thread
-    run_health_server()
+    # Start automatic Forex scanner
+
+    automatic_scanner()
