@@ -36,8 +36,6 @@ class HealthHandler(BaseHTTPRequestHandler):
         )
 
 
-    # Fix Render health check HEAD request
-
     def do_HEAD(self):
 
         self.send_response(200)
@@ -49,8 +47,6 @@ class HealthHandler(BaseHTTPRequestHandler):
 
         self.end_headers()
 
-
-    # Hide unnecessary HTTP log messages
 
     def log_message(self, format, *args):
 
@@ -122,8 +118,7 @@ def send_telegram_message(message):
 
 
         print(
-            f"Telegram status: "
-            f"{response.status_code}"
+            f"Telegram status: {response.status_code}"
         )
 
 
@@ -184,13 +179,13 @@ FOREX_PAIRS = [
 TIMEFRAME = "5M"
 
 
-# FCsAPI FREE PLAN ALLOWS ONLY 3 REQUESTS PER MINUTE
-# 22 seconds between requests keeps us safely below the limit
+# FCsAPI FREE PLAN:
+# Maximum 3 requests per minute
 
 API_REQUEST_DELAY = 22
 
 
-# Wait before starting the next complete scan
+# Wait before starting another full scan
 
 SCAN_INTERVAL = 60
 
@@ -213,24 +208,20 @@ def format_signal(result):
         "NO TRADE"
     )
 
-
     pair = result.get(
         "pair",
         "Unknown"
     )
-
 
     timeframe = result.get(
         "timeframe",
         TIMEFRAME
     )
 
-
     trend = result.get(
         "trend",
         "WAIT"
     )
-
 
     reason = result.get(
         "reason",
@@ -392,33 +383,24 @@ def automatic_scanner():
 
 
                                 print(
-
                                     f"NEW signal sent for "
-
                                     f"{pair}: {signal}"
-
                                 )
 
 
                             else:
 
                                 print(
-
                                     f"Failed to send signal "
-
                                     f"for {pair}"
-
                                 )
 
 
                         else:
 
                             print(
-
                                 f"Duplicate signal ignored for "
-
                                 f"{pair}: {signal}"
-
                             )
 
 
@@ -431,13 +413,9 @@ def automatic_scanner():
 
                         if LAST_SIGNALS.get(pair) is not None:
 
-
                             print(
-
                                 f"Signal reset for {pair}. "
-
                                 "Waiting for a new setup."
-
                             )
 
 
@@ -445,15 +423,12 @@ def automatic_scanner():
 
 
                         print(
-
                             f"No trade for {pair}"
-
                         )
 
 
                     # =====================================
-                    # IMPORTANT:
-                    # FCsAPI RATE LIMIT PROTECTION
+                    # API RATE LIMIT PROTECTION
                     # =====================================
 
                     print(
@@ -470,16 +445,11 @@ def automatic_scanner():
                 except Exception as e:
 
                     print(
-
-                        f"Error analyzing "
-
-                        f"{pair}: {e}"
-
+                        f"Error analyzing {pair}: {e}"
                     )
 
 
-                    # Wait even after an error
-                    # to avoid API rate limit problems
+                    # Wait after errors too
 
                     time.sleep(
                         API_REQUEST_DELAY
