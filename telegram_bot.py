@@ -1,13 +1,13 @@
 import time
 import requests
 
-from config import BOT_TOKEN, CHAT_ID
+from config import BOT_TOKEN
 from signals import get_signal
 
 
-# ==========================================
+# =========================================================
 # FOREX PAIRS
-# ==========================================
+# =========================================================
 
 FOREX_PAIRS = [
 
@@ -38,16 +38,24 @@ FOREX_PAIRS = [
 TIMEFRAME = "5M"
 
 
-# ==========================================
+# =========================================================
 # SEND TELEGRAM MESSAGE
-# ==========================================
+# =========================================================
 
 def send_message(chat_id, text):
+
+    if not BOT_TOKEN:
+
+        print("BOT_TOKEN is missing.")
+
+        return False
+
 
     url = (
         f"https://api.telegram.org/bot"
         f"{BOT_TOKEN}/sendMessage"
     )
+
 
     data = {
 
@@ -56,6 +64,7 @@ def send_message(chat_id, text):
         "text": text
 
     }
+
 
     try:
 
@@ -69,18 +78,22 @@ def send_message(chat_id, text):
 
         )
 
+
         return response.ok
+
 
     except Exception as e:
 
-        print(f"Telegram error: {e}")
+        print(
+            f"Telegram error: {e}"
+        )
 
         return False
 
 
-# ==========================================
+# =========================================================
 # FORMAT SIGNAL
-# ==========================================
+# =========================================================
 
 def format_signal(result):
 
@@ -89,20 +102,24 @@ def format_signal(result):
         "NO TRADE"
     )
 
+
     pair = result.get(
         "pair",
         "Unknown"
     )
+
 
     timeframe = result.get(
         "timeframe",
         TIMEFRAME
     )
 
+
     trend = result.get(
         "trend",
         "WAIT"
     )
+
 
     reason = result.get(
         "reason",
@@ -114,9 +131,11 @@ def format_signal(result):
 
         icon = "🟢"
 
+
     elif signal == "SELL":
 
         icon = "🔴"
+
 
     else:
 
@@ -168,18 +187,20 @@ def format_signal(result):
 
     )
 
+
     return message
 
 
-# ==========================================
+# =========================================================
 # TELEGRAM MANUAL BOT
-# ==========================================
+# =========================================================
 
 def run_telegram_bot():
 
     print(
         "Manual Telegram bot started."
     )
+
 
     offset = None
 
@@ -189,8 +210,11 @@ def run_telegram_bot():
         try:
 
             url = (
+
                 f"https://api.telegram.org/bot"
+
                 f"{BOT_TOKEN}/getUpdates"
+
             )
 
 
@@ -231,12 +255,19 @@ def run_telegram_bot():
                 continue
 
 
-            for update in data.get("result", []):
+            for update in data.get(
+                "result",
+                []
+            ):
 
-                offset = update["update_id"] + 1
+                offset = (
+                    update["update_id"] + 1
+                )
 
 
-                message = update.get("message")
+                message = update.get(
+                    "message"
+                )
 
 
                 if not message:
@@ -244,20 +275,25 @@ def run_telegram_bot():
                     continue
 
 
-                chat_id = message["chat"]["id"]
+                chat_id = message[
+                    "chat"
+                ]["id"]
 
 
                 text = message.get(
+
                     "text",
                     ""
-                ).strip()
+
+                ).strip().upper()
 
 
-                # ==========================
+                # =========================================
                 # MANUAL FOREX PAIR REQUEST
-                # ==========================
+                # =========================================
 
                 if text in FOREX_PAIRS:
+
 
                     send_message(
 
@@ -305,16 +341,17 @@ def run_telegram_bot():
                             chat_id,
 
                             "❌ Error analyzing this pair. "
-                            "Please try again."
+                            "Please wait and try again."
 
                         )
 
 
-                # ==========================
+                # =========================================
                 # START COMMAND
-                # ==========================
+                # =========================================
 
-                elif text == "/start":
+                elif text == "/START":
+
 
                     pairs_text = "\n".join(
                         FOREX_PAIRS
