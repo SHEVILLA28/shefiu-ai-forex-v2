@@ -1,7 +1,11 @@
 import os
 import time
 import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
+
+from http.server import (
+    HTTPServer,
+    BaseHTTPRequestHandler
+)
 
 import requests
 
@@ -63,14 +67,20 @@ def run_health_server():
         )
     )
 
+
     server = HTTPServer(
+
         ("0.0.0.0", port),
+
         HealthHandler
+
     )
+
 
     print(
         f"Health server running on port {port}"
     )
+
 
     server.serve_forever()
 
@@ -91,8 +101,11 @@ def send_telegram_message(message):
 
 
     url = (
+
         f"https://api.telegram.org/bot"
+
         f"{BOT_TOKEN}/sendMessage"
+
     )
 
 
@@ -119,7 +132,8 @@ def send_telegram_message(message):
 
 
         print(
-            f"Telegram status: {response.status_code}"
+            f"Telegram status: "
+            f"{response.status_code}"
         )
 
 
@@ -180,13 +194,16 @@ FOREX_PAIRS = [
 TIMEFRAME = "5M"
 
 
-# FCSAPI FREE PLAN:
-# Maximum 3 requests per minute
+# =========================================================
+# FCSAPI RATE LIMIT PROTECTION
+# =========================================================
 
 API_REQUEST_DELAY = 30
 
 
-# Wait before starting another full scan
+# =========================================================
+# WAIT AFTER FULL SCAN
+# =========================================================
 
 SCAN_INTERVAL = 60
 
@@ -209,20 +226,24 @@ def format_signal(result):
         "NO TRADE"
     )
 
+
     pair = result.get(
         "pair",
         "Unknown"
     )
+
 
     timeframe = result.get(
         "timeframe",
         TIMEFRAME
     )
 
+
     trend = result.get(
         "trend",
         "WAIT"
     )
+
 
     reason = result.get(
         "reason",
@@ -234,9 +255,11 @@ def format_signal(result):
 
         signal_icon = "🟢"
 
+
     elif signal == "SELL":
 
         signal_icon = "🔴"
+
 
     else:
 
@@ -339,20 +362,28 @@ def automatic_scanner():
 
 
                     signal = result.get(
+
                         "signal",
+
                         "NO TRADE"
+
                     )
 
 
                     # =====================================
-                    # SEND ONLY NEW SIGNALS
+                    # SEND ONLY BUY OR SELL
                     # =====================================
 
-                    if signal in ["BUY", "SELL"]:
+                    if signal in [
+
+                        "BUY",
+                        "SELL"
+
+                    ]:
 
 
-                        previous_signal = LAST_SIGNALS.get(
-                            pair
+                        previous_signal = (
+                            LAST_SIGNALS.get(pair)
                         )
 
 
@@ -380,7 +411,9 @@ def automatic_scanner():
 
                             if sent:
 
-                                LAST_SIGNALS[pair] = signal
+                                LAST_SIGNALS[pair] = (
+                                    signal
+                                )
 
 
                                 print(
@@ -389,24 +422,16 @@ def automatic_scanner():
                                 )
 
 
-                            else:
-
-                                print(
-                                    f"Failed to send signal "
-                                    f"for {pair}"
-                                )
-
-
                         else:
 
                             print(
-                                f"Duplicate signal ignored for "
-                                f"{pair}: {signal}"
+                                f"Duplicate signal ignored "
+                                f"for {pair}: {signal}"
                             )
 
 
                     # =====================================
-                    # RESET WHEN NO TRADE
+                    # RESET SIGNAL
                     # =====================================
 
                     else:
@@ -415,8 +440,7 @@ def automatic_scanner():
                         if LAST_SIGNALS.get(pair) is not None:
 
                             print(
-                                f"Signal reset for {pair}. "
-                                "Waiting for a new setup."
+                                f"Signal reset for {pair}."
                             )
 
 
@@ -429,12 +453,12 @@ def automatic_scanner():
 
 
                     # =====================================
-                    # API RATE LIMIT PROTECTION
+                    # WAIT BEFORE NEXT API REQUEST
                     # =====================================
 
                     print(
-                        f"Waiting {API_REQUEST_DELAY} seconds "
-                        "before next API request..."
+                        f"Waiting "
+                        f"{API_REQUEST_DELAY} seconds..."
                     )
 
 
@@ -484,11 +508,6 @@ def automatic_scanner():
                 f"Scanner error: {e}"
             )
 
-            print(
-                "Waiting 60 seconds before retry..."
-            )
-
-
             time.sleep(60)
 
 
@@ -503,9 +522,9 @@ if __name__ == "__main__":
     )
 
 
-    # =====================================
+    # =====================================================
     # START RENDER HEALTH SERVER
-    # =====================================
+    # =====================================================
 
     health_thread = threading.Thread(
 
@@ -515,12 +534,13 @@ if __name__ == "__main__":
 
     )
 
+
     health_thread.start()
 
 
-    # =====================================
-    # START MANUAL TELEGRAM BOT
-    # =====================================
+    # =====================================================
+    # START TELEGRAM BOT
+    # =====================================================
 
     telegram_thread = threading.Thread(
 
@@ -530,6 +550,7 @@ if __name__ == "__main__":
 
     )
 
+
     telegram_thread.start()
 
 
@@ -538,8 +559,8 @@ if __name__ == "__main__":
     )
 
 
-    # =====================================
-    # START AUTOMATIC FOREX SCANNER
-    # =====================================
+    # =====================================================
+    # START AUTOMATIC SCANNER
+    # =====================================================
 
     automatic_scanner()
