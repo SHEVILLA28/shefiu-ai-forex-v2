@@ -39,6 +39,19 @@ TIMEFRAME = "5M"
 
 
 # =========================================================
+# MANUAL REQUEST PROTECTION
+# =========================================================
+
+MANUAL_REQUEST_COOLDOWN = 60
+
+LAST_MANUAL_REQUEST = {}
+
+SIGNAL_CACHE = {}
+
+CACHE_DURATION = 60
+
+
+# =========================================================
 # SEND TELEGRAM MESSAGE
 # =========================================================
 
@@ -192,6 +205,82 @@ def format_signal(result):
 
 
 # =========================================================
+# CHECK MANUAL COOLDOWN
+# =========================================================
+
+def can_make_manual_request(chat_id):
+
+    now = time.time()
+
+
+    last_request = LAST_MANUAL_REQUEST.get(
+        chat_id,
+        0
+    )
+
+
+    elapsed = now - last_request
+
+
+    if elapsed < MANUAL_REQUEST_COOLDOWN:
+
+        remaining = int(
+            MANUAL_REQUEST_COOLDOWN - elapsed
+        ) + 1
+
+
+        return False, remaining
+
+
+    LAST_MANUAL_REQUEST[chat_id] = now
+
+
+    return True, 0
+
+
+# =========================================================
+# GET CACHED SIGNAL
+# =========================================================
+
+def get_cached_signal(pair):
+
+    cached = SIGNAL_CACHE.get(pair)
+
+
+    if not cached:
+
+        return None
+
+
+    result = cached["result"]
+
+    saved_time = cached["time"]
+
+
+    if time.time() - saved_time < CACHE_DURATION:
+
+        return result
+
+
+    return None
+
+
+# =========================================================
+# SAVE SIGNAL TO CACHE
+# =========================================================
+
+def save_signal_to_cache(pair, result):
+
+    SIGNAL_CACHE[pair] = {
+
+        "result": result,
+
+        "time": time.time()
+
+    }
+
+
+# =========================================================
 # TELEGRAM MANUAL BOT
 # =========================================================
 
@@ -295,6 +384,78 @@ def run_telegram_bot():
                 if text in FOREX_PAIRS:
 
 
+                    # =====================================
+                    # CHECK CACHE FIRST
+                    # =====================================
+
+                    cached_result = get_cached_signal(
+                        text
+                    )
+
+
+                    if cached_result:
+
+
+                        send_message(
+
+                            chat_id,
+
+                            "📋 Showing recent analysis for "
+                            f"{text}..."
+
+                        )
+
+
+                        signal_message = format_signal(
+                            cached_result
+                        )
+
+
+                        send_message(
+
+                            chat_id,
+
+                            signal_message
+
+                        )
+
+
+                        continue
+
+
+                    # =====================================
+                    # CHECK COOLDOWN
+                    # =====================================
+
+                    allowed, remaining = (
+                        can_make_manual_request(
+                            chat_id
+                        )
+                    )
+
+
+                    if not allowed:
+
+
+                        send_message(
+
+                            chat_id,
+
+                            "⏳ Please wait "
+                            f"{remaining} seconds before "
+                            "requesting another manual analysis.\n\n"
+                            "🤖 Automatic scanning is still running."
+
+                        )
+
+
+                        continue
+
+
+                    # =====================================
+                    # ANALYZE PAIR
+                    # =====================================
+
                     send_message(
 
                         chat_id,
@@ -311,6 +472,19 @@ def run_telegram_bot():
                             text,
 
                             TIMEFRAME
+
+                        )
+
+
+                        # =================================
+                        # SAVE RESULT
+                        # =================================
+
+                        save_signal_to_cache(
+
+                            text,
+
+                            result
 
                         )
 
@@ -340,8 +514,9 @@ def run_telegram_bot():
 
                             chat_id,
 
-                            "❌ Error analyzing this pair. "
-                            "Please wait and try again."
+                            "❌ Error analyzing this pair.\n\n"
+                            "Please wait about one minute "
+                            "and try again."
 
                         )
 
@@ -367,7 +542,10 @@ def run_telegram_bot():
 
                         f"{pairs_text}\n\n"
 
-                        f"⏱ Timeframe: {TIMEFRAME}"
+                        f"⏱ Timeframe: {TIMEFRAME}\n\n"
+
+                        "⏳ Manual requests are protected "
+                        "to prevent API rate limits."
 
                     )
 
