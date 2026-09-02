@@ -180,10 +180,10 @@ FOREX_PAIRS = [
 TIMEFRAME = "5M"
 
 
-# FCsAPI FREE PLAN:
+# FCSAPI FREE PLAN:
 # Maximum 3 requests per minute
 
-API_REQUEST_DELAY = 22
+API_REQUEST_DELAY = 30
 
 
 # Wait before starting another full scan
