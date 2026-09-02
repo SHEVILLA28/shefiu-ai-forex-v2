@@ -195,10 +195,13 @@ TIMEFRAME = "5M"
 
 
 # =========================================================
-# FCSAPI RATE LIMIT PROTECTION
+# API RATE LIMIT PROTECTION
 # =========================================================
 
-API_REQUEST_DELAY = 30
+# Wait 60 seconds between automatic API requests.
+# This helps reduce rate-limit problems.
+
+API_REQUEST_DELAY = 60
 
 
 # =========================================================
