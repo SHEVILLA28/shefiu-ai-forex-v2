@@ -1,4 +1,6 @@
 import os
+import time
+import threading
 import requests
 import pandas as pd
 
@@ -12,6 +14,28 @@ API_KEY = os.getenv("FCSAPI_API_KEY")
 BASE_URL = "https://api-v4.fcsapi.com/forex/history"
 
 MIN_CANDLES = 100
+
+
+# =========================================================
+# FCSAPI RATE LIMIT PROTECTION
+# =========================================================
+
+# Your plan allows approximately 3 requests per minute.
+# 21 seconds between requests keeps the bot below the limit.
+
+REQUEST_INTERVAL = 21
+
+_last_request_time = 0
+_request_lock = threading.Lock()
+
+
+# =========================================================
+# MARKET DATA CACHE
+# =========================================================
+
+CACHE_SECONDS = 60
+
+market_cache = {}
 
 
 # =========================================================
@@ -35,17 +59,85 @@ def format_symbol(pair):
 
 
 # =========================================================
+# WAIT FOR API RATE LIMIT
+# =========================================================
+
+def wait_for_rate_limit():
+
+    global _last_request_time
+
+    with _request_lock:
+
+        current_time = time.time()
+
+        elapsed = current_time - _last_request_time
+
+        if elapsed < REQUEST_INTERVAL:
+
+            wait_time = REQUEST_INTERVAL - elapsed
+
+            print(
+                f"Waiting {round(wait_time, 1)} seconds "
+                f"to protect FCSAPI rate limit..."
+            )
+
+            time.sleep(wait_time)
+
+        _last_request_time = time.time()
+
+
+# =========================================================
 # GET MARKET DATA
 # =========================================================
 
 def get_market_data(pair, timeframe):
 
     if not API_KEY:
-        error_message = "FCSAPI_API_KEY is not configured in Render."
+
+        error_message = (
+            "FCSAPI_API_KEY is not configured in Render."
+        )
+
         print(error_message)
+
         return None, error_message
 
-    period = TIMEFRAME_MAP.get(timeframe, "5m")
+
+    # =====================================================
+    # CHECK CACHE FIRST
+    # =====================================================
+
+    cache_key = f"{pair}_{timeframe}"
+
+    current_time = time.time()
+
+    if cache_key in market_cache:
+
+        cached_time = market_cache[cache_key]["time"]
+
+        cached_data = market_cache[cache_key]["data"]
+
+        age = current_time - cached_time
+
+        if age < CACHE_SECONDS:
+
+            print(
+                f"Using cached market data for "
+                f"{pair} | {timeframe}"
+            )
+
+            return cached_data, None
+
+
+    # =====================================================
+    # PREPARE API REQUEST
+    # =====================================================
+
+    period = TIMEFRAME_MAP.get(
+        timeframe,
+        "5m"
+    )
+
     symbol = format_symbol(pair)
 
     params = {
@@ -55,8 +147,24 @@ def get_market_data(pair, timeframe):
         "access_key": API_KEY,
     }
 
+
+    # =====================================================
+    # RATE LIMIT PROTECTION
+    # =====================================================
+
+    wait_for_rate_limit()
+
+
+    # =====================================================
+    # REQUEST MARKET DATA
+    # =====================================================
+
     try:
-        print(f"Requesting FCSAPI market data: {symbol} | {period}")
+
+        print(
+            f"Requesting FCSAPI market data: "
+            f"{symbol} | {period}"
+        )
 
         response = requests.get(
             BASE_URL,
@@ -64,14 +172,24 @@ def get_market_data(pair, timeframe):
             timeout=30
         )
 
-        print(f"FCSAPI status code: {response.status_code}")
+        print(
+            f"FCSAPI status code: "
+            f"{response.status_code}"
+        )
 
         data = response.json()
 
+
     except Exception as e:
-        error_message = f"FCSAPI market request error: {e}"
+
+        error_message = (
+            f"FCSAPI market request error: {e}"
+        )
+
         print(error_message)
+
         return None, error_message
+
 
     # =====================================================
     # CHECK API RESPONSE
@@ -89,33 +207,54 @@ def get_market_data(pair, timeframe):
 
         return None, str(error_message)
 
+
     response_data = data.get("response")
 
     if not response_data:
-        error_message = "FCSAPI returned no market candles."
+
+        error_message = (
+            "FCSAPI returned no market candles."
+        )
+
         print(error_message)
+
         return None, error_message
+
 
     # =====================================================
     # PROCESS MARKET DATA
     # =====================================================
 
     try:
+
         rows = []
 
+
         if isinstance(response_data, dict):
-            candles = list(response_data.values())
+
+            candles = list(
+                response_data.values()
+            )
+
 
         elif isinstance(response_data, list):
+
             candles = response_data
 
+
         else:
-            return None, "Unexpected FCSAPI response format."
+
+            return (
+                None,
+                "Unexpected FCSAPI response format."
+            )
+
 
         for candle in candles:
 
             if not isinstance(candle, dict):
                 continue
+
 
             rows.append({
                 "datetime": candle.get("tm"),
@@ -126,10 +265,17 @@ def get_market_data(pair, timeframe):
                 "close": candle.get("c"),
             })
 
+
         df = pd.DataFrame(rows)
 
+
         if df.empty:
-            return None, "FCSAPI returned empty candle data."
+
+            return (
+                None,
+                "FCSAPI returned empty candle data."
+            )
+
 
         # =================================================
         # DATETIME
@@ -140,16 +286,23 @@ def get_market_data(pair, timeframe):
             errors="coerce"
         )
 
+
         # =================================================
         # NUMERIC DATA
         # =================================================
 
-        for column in ["open", "high", "low", "close"]:
+        for column in [
+            "open",
+            "high",
+            "low",
+            "close"
+        ]:
 
             df[column] = pd.to_numeric(
                 df[column],
                 errors="coerce"
             )
+
 
         df = df.dropna(
             subset=[
@@ -161,26 +314,50 @@ def get_market_data(pair, timeframe):
             ]
         )
 
+
         df = df.sort_values(
             "datetime"
         ).reset_index(
             drop=True
         )
 
-        print(f"FCSAPI candles received: {len(df)}")
+
+        print(
+            f"FCSAPI candles received: "
+            f"{len(df)}"
+        )
+
 
         if len(df) < MIN_CANDLES:
+
             return None, (
                 f"Not enough market candles. "
                 f"Received {len(df)}, "
                 f"need at least {MIN_CANDLES}."
             )
 
+
+        # =================================================
+        # SAVE DATA TO CACHE
+        # =================================================
+
+        market_cache[cache_key] = {
+            "time": time.time(),
+            "data": df
+        }
+
+
         return df, None
 
+
     except Exception as e:
-        error_message = f"FCSAPI data processing error: {e}"
+
+        error_message = (
+            f"FCSAPI data processing error: {e}"
+        )
+
         print(error_message)
+
         return None, error_message
 
 
@@ -196,16 +373,22 @@ def calculate_rsi(series, period=14):
 
     loss = -delta.clip(upper=0)
 
-    avg_gain = gain.rolling(window=period).mean()
+    avg_gain = gain.rolling(
+        window=period
+    ).mean()
 
-    avg_loss = loss.rolling(window=period).mean()
+    avg_loss = loss.rolling(
+        window=period
+    ).mean()
 
     rs = avg_gain / avg_loss.replace(
         0,
         0.000001
     )
 
-    rsi = 100 - (100 / (1 + rs))
+    rsi = 100 - (
+        100 / (1 + rs)
+    )
 
     return rsi
 
@@ -228,7 +411,10 @@ def calculate_ema(series, period):
 
 def calculate_atr(df, period=14):
 
-    high_low = df["high"] - df["low"]
+    high_low = (
+        df["high"] -
+        df["low"]
+    )
 
     high_close = (
         df["high"] -
@@ -263,12 +449,22 @@ def calculate_atr(df, period=14):
 def format_price(price):
 
     if pd.isna(price):
+
         return "N/A"
 
-    if price >= 100:
-        return round(float(price), 3)
 
-    return round(float(price), 5)
+    if price >= 100:
+
+        return round(
+            float(price),
+            3
+        )
+
+
+    return round(
+        float(price),
+        5
+    )
 
 
 # =========================================================
@@ -276,6 +472,7 @@ def format_price(price):
 # =========================================================
 
 def get_signal(pair, timeframe="5M"):
+
 
     # =====================================================
     # CHECK API KEY
@@ -299,6 +496,7 @@ def get_signal(pair, timeframe="5M"):
             )
         }
 
+
     # =====================================================
     # GET MARKET DATA
     # =====================================================
@@ -307,6 +505,7 @@ def get_signal(pair, timeframe="5M"):
         pair,
         timeframe
     )
+
 
     if df is None:
 
@@ -322,6 +521,7 @@ def get_signal(pair, timeframe="5M"):
             "confidence": 0,
             "reason": error_message
         }
+
 
     # =====================================================
     # CALCULATE INDICATORS
@@ -349,21 +549,37 @@ def get_signal(pair, timeframe="5M"):
             14
         )
 
+
         latest = df.iloc[-1]
 
-        close = float(latest["close"])
 
-        ema_20 = float(latest["ema_20"])
+        close = float(
+            latest["close"]
+        )
 
-        ema_50 = float(latest["ema_50"])
+        ema_20 = float(
+            latest["ema_20"]
+        )
 
-        rsi = float(latest["rsi"])
+        ema_50 = float(
+            latest["ema_50"]
+        )
 
-        atr = float(latest["atr"])
+        rsi = float(
+            latest["rsi"]
+        )
+
+        atr = float(
+            latest["atr"]
+        )
+
 
     except Exception as e:
 
-        print("Indicator calculation error:", e)
+        print(
+            "Indicator calculation error:",
+            e
+        )
 
         return {
             "pair": pair,
@@ -380,8 +596,9 @@ def get_signal(pair, timeframe="5M"):
             )
         }
 
+
     # =====================================================
-    # CHECK FOR INVALID INDICATORS
+    # CHECK INVALID INDICATORS
     # =====================================================
 
     if pd.isna(rsi) or pd.isna(atr):
@@ -402,18 +619,25 @@ def get_signal(pair, timeframe="5M"):
             )
         }
 
+
     # =====================================================
     # DETERMINE TREND
     # =====================================================
 
     if ema_20 > ema_50:
+
         trend = "BUY"
 
+
     elif ema_20 < ema_50:
+
         trend = "SELL"
 
+
     else:
+
         trend = "WAIT"
+
 
     # =====================================================
     # BUY SIGNAL
@@ -428,22 +652,34 @@ def get_signal(pair, timeframe="5M"):
 
         entry = close
 
-        stop_loss = close - (atr * 1.5)
+        stop_loss = (
+            close - (atr * 1.5)
+        )
 
-        take_profit = close + (atr * 2.0)
+        take_profit = (
+            close + (atr * 2.0)
+        )
+
 
         confidence = 70
 
+
         if rsi >= 55:
+
             confidence += 10
+
 
         return {
             "pair": pair,
             "timeframe": timeframe,
             "signal": "BUY",
             "entry": format_price(entry),
-            "take_profit": format_price(take_profit),
-            "stop_loss": format_price(stop_loss),
+            "take_profit": format_price(
+                take_profit
+            ),
+            "stop_loss": format_price(
+                stop_loss
+            ),
             "trend": "BUY",
             "rsi": round(rsi, 2),
             "confidence": confidence,
@@ -454,6 +690,7 @@ def get_signal(pair, timeframe="5M"):
                 "showing bullish momentum."
             )
         }
+
 
     # =====================================================
     # SELL SIGNAL
@@ -468,22 +705,34 @@ def get_signal(pair, timeframe="5M"):
 
         entry = close
 
-        stop_loss = close + (atr * 1.5)
+        stop_loss = (
+            close + (atr * 1.5)
+        )
 
-        take_profit = close - (atr * 2.0)
+        take_profit = (
+            close - (atr * 2.0)
+        )
+
 
         confidence = 70
 
+
         if rsi <= 45:
+
             confidence += 10
+
 
         return {
             "pair": pair,
             "timeframe": timeframe,
             "signal": "SELL",
             "entry": format_price(entry),
-            "take_profit": format_price(take_profit),
-            "stop_loss": format_price(stop_loss),
+            "take_profit": format_price(
+                take_profit
+            ),
+            "stop_loss": format_price(
+                stop_loss
+            ),
             "trend": "SELL",
             "rsi": round(rsi, 2),
             "confidence": confidence,
@@ -494,6 +743,7 @@ def get_signal(pair, timeframe="5M"):
                 "showing bearish momentum."
             )
         }
+
 
     # =====================================================
     # NO TRADE
@@ -507,6 +757,7 @@ def get_signal(pair, timeframe="5M"):
             "enough yet."
         )
 
+
     elif trend == "SELL":
 
         reason = (
@@ -515,12 +766,14 @@ def get_signal(pair, timeframe="5M"):
             "enough yet."
         )
 
+
     else:
 
         reason = (
             "Market direction is unclear. "
             "Waiting for a stronger setup."
         )
+
 
     return {
         "pair": pair,
@@ -533,4 +786,4 @@ def get_signal(pair, timeframe="5M"):
         "rsi": round(rsi, 2),
         "confidence": 0,
         "reason": reason
-            }
+    }
