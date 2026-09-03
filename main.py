@@ -107,7 +107,7 @@ def send_telegram_message(message):
     data = {
         "chat_id": CHAT_ID,
         "text": message
-    }
+    )
 
 
     try:
@@ -187,7 +187,6 @@ TRADE_VOLUME = 0.01
 
 # =========================================================
 # SIGNAL MEMORY
-# PREVENTS DUPLICATE TRADES
 # =========================================================
 
 LAST_SIGNAL = {}
@@ -315,20 +314,12 @@ def run_automatic_scanner():
                     )
 
 
-                    # =====================================
-                    # BUY OR SELL SIGNAL
-                    # =====================================
-
                     if signal in ["BUY", "SELL"]:
 
                         previous_signal = (
                             LAST_SIGNAL.get(pair)
                         )
 
-
-                        # =================================
-                        # PREVENT DUPLICATE TRADES
-                        # =================================
 
                         if previous_signal == signal:
 
@@ -346,10 +337,6 @@ def run_automatic_scanner():
                             )
 
 
-                            # =============================
-                            # PLACE AUTOMATIC TRADE
-                            # =============================
-
                             trade_success = execute_trade(
                                 signal,
                                 pair
@@ -366,10 +353,6 @@ def run_automatic_scanner():
                                     f"successfully for {pair}"
                                 )
 
-
-                                # =========================
-                                # SEND TELEGRAM MESSAGE
-                                # =========================
 
                                 message = format_signal(
                                     result
@@ -409,12 +392,8 @@ def run_automatic_scanner():
 
                     else:
 
-                        # Reset memory when there is no trade
-
                         LAST_SIGNAL[pair] = None
 
-
-                    # Small delay between pairs
 
                     time.sleep(3)
 
@@ -485,6 +464,27 @@ if __name__ == "__main__":
 
     print(
         "Manual Telegram bot started."
+    )
+
+
+    # =============================================
+    # TEMPORARY METAAPI DEMO TEST
+    # ONE EUR/USD BUY ONLY
+    # =============================================
+
+    print(
+        "Testing MetaAPI DEMO connection..."
+    )
+
+
+    test_success = execute_trade(
+        "BUY",
+        "EUR/USD"
+    )
+
+
+    print(
+        f"MetaAPI test result: {test_success}"
     )
 
 
