@@ -9,7 +9,10 @@ from metaapi_cloud_sdk import MetaApi
 # =========================================================
 
 METAAPI_TOKEN = os.getenv("METAAPI_TOKEN")
-METAAPI_ACCOUNT_ID = os.getenv("METAAPI_ACCOUNT_ID")
+
+METAAPI_ACCOUNT_ID = os.getenv(
+    "METAAPI_ACCOUNT_ID"
+)
 
 
 # =========================================================
@@ -17,6 +20,7 @@ METAAPI_ACCOUNT_ID = os.getenv("METAAPI_ACCOUNT_ID")
 # =========================================================
 
 MAX_CONNECTION_ATTEMPTS = 5
+
 RETRY_DELAY = 10
 
 
@@ -27,10 +31,14 @@ RETRY_DELAY = 10
 async def get_connection():
 
     if not METAAPI_TOKEN:
-        raise Exception("METAAPI_TOKEN is missing")
+        raise Exception(
+            "METAAPI_TOKEN is missing"
+        )
 
     if not METAAPI_ACCOUNT_ID:
-        raise Exception("METAAPI_ACCOUNT_ID is missing")
+        raise Exception(
+            "METAAPI_ACCOUNT_ID is missing"
+        )
 
     print("Connecting to MetaAPI...")
 
@@ -76,11 +84,17 @@ async def get_connection():
 
             if attempt < MAX_CONNECTION_ATTEMPTS:
 
+                print(
+                    f"Waiting {RETRY_DELAY} seconds..."
+                )
+
                 await asyncio.sleep(RETRY_DELAY)
 
             else:
 
-                raise
+                raise Exception(
+                    f"Could not connect to MetaAPI: {e}"
+                )
 
 
 # =========================================================
@@ -92,7 +106,7 @@ async def place_buy_order(symbol, volume):
     connection = await get_connection()
 
     print(
-        f"Placing BUY: {symbol} | {volume}"
+        f"Placing BUY: {symbol} | Volume: {volume}"
     )
 
     result = await connection.create_market_buy_order(
@@ -116,7 +130,7 @@ async def place_sell_order(symbol, volume):
     connection = await get_connection()
 
     print(
-        f"Placing SELL: {symbol} | {volume}"
+        f"Placing SELL: {symbol} | Volume: {volume}"
     )
 
     result = await connection.create_market_sell_order(
@@ -141,11 +155,41 @@ async def get_open_positions():
 
     positions = await connection.get_positions()
 
+    print(
+        f"Open positions found: {len(positions)}"
+    )
+
     return positions
 
 
 # =========================================================
-# CLOSE POSITION
+# GET TOTAL PROFIT / LOSS
+# =========================================================
+
+async def get_total_profit():
+
+    positions = await get_open_positions()
+
+    total_profit = 0.0
+
+    for position in positions:
+
+        profit = position.get(
+            "profit",
+            0
+        )
+
+        total_profit += float(profit)
+
+    print(
+        f"Total open profit/loss: ${total_profit:.2f}"
+    )
+
+    return total_profit
+
+
+# =========================================================
+# CLOSE ONE POSITION
 # =========================================================
 
 async def close_position(position_id):
@@ -165,3 +209,64 @@ async def close_position(position_id):
     )
 
     return result
+
+
+# =========================================================
+# CLOSE ALL OPEN POSITIONS
+# =========================================================
+
+async def close_all_positions():
+
+    positions = await get_open_positions()
+
+    if not positions:
+
+        print(
+            "No open positions to close."
+        )
+
+        return 0
+
+
+    closed_count = 0
+
+
+    for position in positions:
+
+        try:
+
+            position_id = position.get("id")
+
+            symbol = position.get(
+                "symbol",
+                "Unknown"
+            )
+
+            if position_id:
+
+                print(
+                    f"Closing {symbol} "
+                    f"| Position ID: {position_id}"
+                )
+
+                await close_position(
+                    position_id
+                )
+
+                closed_count += 1
+
+                await asyncio.sleep(1)
+
+
+        except Exception as e:
+
+            print(
+                f"Error closing position: {e}"
+            )
+
+
+    print(
+        f"Closed positions: {closed_count}"
+    )
+
+    return closed_count
