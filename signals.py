@@ -383,6 +383,29 @@ def calculate_atr(df, period=14):
 
 
 # =========================================================
+# SUPPORT AND RESISTANCE
+# =========================================================
+
+def calculate_support_resistance(df, lookback=50):
+
+    recent_data = df.tail(
+        lookback
+    )
+
+
+    support = recent_data["low"].min()
+
+
+    resistance = recent_data["high"].max()
+
+
+    return (
+        float(support),
+        float(resistance)
+    )
+
+
+# =========================================================
 # FORMAT PRICE
 # =========================================================
 
@@ -433,6 +456,8 @@ def get_signal(pair, timeframe="5M"):
             "entry": "N/A",
             "take_profit": "N/A",
             "stop_loss": "N/A",
+            "support": "N/A",
+            "resistance": "N/A",
             "trend": "WAIT",
             "rsi": "N/A",
             "confidence": 0,
@@ -467,6 +492,18 @@ def get_signal(pair, timeframe="5M"):
         df["atr"] = calculate_atr(
             df,
             14
+        )
+
+
+        # =================================================
+        # SUPPORT AND RESISTANCE
+        # =================================================
+
+        support, resistance = (
+            calculate_support_resistance(
+                df,
+                50
+            )
         )
 
 
@@ -514,6 +551,8 @@ def get_signal(pair, timeframe="5M"):
             "entry": "N/A",
             "take_profit": "N/A",
             "stop_loss": "N/A",
+            "support": "N/A",
+            "resistance": "N/A",
             "trend": "WAIT",
             "rsi": "N/A",
             "confidence": 0,
@@ -536,6 +575,8 @@ def get_signal(pair, timeframe="5M"):
             "entry": "N/A",
             "take_profit": "N/A",
             "stop_loss": "N/A",
+            "support": format_price(support),
+            "resistance": format_price(resistance),
             "trend": "WAIT",
             "rsi": "N/A",
             "confidence": 0,
@@ -566,6 +607,20 @@ def get_signal(pair, timeframe="5M"):
 
 
     # =====================================================
+    # SUPPORT / RESISTANCE DISTANCE
+    # =====================================================
+
+    distance_to_support = (
+        close - support
+    )
+
+
+    distance_to_resistance = (
+        resistance - close
+    )
+
+
+    # =====================================================
     # BUY CONDITIONS
     # =====================================================
 
@@ -585,18 +640,28 @@ def get_signal(pair, timeframe="5M"):
     )
 
 
+    # Avoid buying too close to resistance
+
+    buy_safe_from_resistance = (
+        distance_to_resistance >= atr * 1.0
+    )
+
+
     if (
         trend == "BUY"
         and bullish_price
         and bullish_momentum
         and bullish_rsi
+        and buy_safe_from_resistance
     ):
 
         entry = close
 
+
         stop_loss = (
             close - (atr * 1.5)
         )
+
 
         take_profit = (
             close + (atr * 2.0)
@@ -616,6 +681,9 @@ def get_signal(pair, timeframe="5M"):
             confidence += 5
 
 
+        confidence += 5
+
+
         return {
             "pair": pair,
             "timeframe": timeframe,
@@ -623,13 +691,16 @@ def get_signal(pair, timeframe="5M"):
             "entry": format_price(entry),
             "take_profit": format_price(take_profit),
             "stop_loss": format_price(stop_loss),
+            "support": format_price(support),
+            "resistance": format_price(resistance),
             "trend": "BUY",
             "rsi": round(rsi, 2),
             "confidence": confidence,
             "reason": (
                 "Bullish trend confirmed by EMA 20 "
                 "above EMA 50, price above EMA 20, "
-                "positive momentum and bullish RSI."
+                "positive momentum, bullish RSI and "
+                "safe distance from resistance."
             )
         }
 
@@ -654,18 +725,28 @@ def get_signal(pair, timeframe="5M"):
     )
 
 
+    # Avoid selling too close to support
+
+    sell_safe_from_support = (
+        distance_to_support >= atr * 1.0
+    )
+
+
     if (
         trend == "SELL"
         and bearish_price
         and bearish_momentum
         and bearish_rsi
+        and sell_safe_from_support
     ):
 
         entry = close
 
+
         stop_loss = (
             close + (atr * 1.5)
         )
+
 
         take_profit = (
             close - (atr * 2.0)
@@ -685,6 +766,9 @@ def get_signal(pair, timeframe="5M"):
             confidence += 5
 
 
+        confidence += 5
+
+
         return {
             "pair": pair,
             "timeframe": timeframe,
@@ -692,22 +776,43 @@ def get_signal(pair, timeframe="5M"):
             "entry": format_price(entry),
             "take_profit": format_price(take_profit),
             "stop_loss": format_price(stop_loss),
+            "support": format_price(support),
+            "resistance": format_price(resistance),
             "trend": "SELL",
             "rsi": round(rsi, 2),
             "confidence": confidence,
             "reason": (
                 "Bearish trend confirmed by EMA 20 "
                 "below EMA 50, price below EMA 20, "
-                "negative momentum and bearish RSI."
+                "negative momentum, bearish RSI and "
+                "safe distance from support."
             )
         }
 
 
     # =====================================================
-    # NO TRADE
+    # NO TRADE REASON
     # =====================================================
 
-    if trend == "BUY":
+    if trend == "BUY" and not buy_safe_from_resistance:
+
+        reason = (
+            "BUY setup detected, but price is too "
+            "close to resistance. Waiting for a safer "
+            "entry."
+        )
+
+
+    elif trend == "SELL" and not sell_safe_from_support:
+
+        reason = (
+            "SELL setup detected, but price is too "
+            "close to support. Waiting for a safer "
+            "entry."
+        )
+
+
+    elif trend == "BUY":
 
         reason = (
             "Bullish trend detected, but price, "
@@ -740,6 +845,8 @@ def get_signal(pair, timeframe="5M"):
         "entry": "N/A",
         "take_profit": "N/A",
         "stop_loss": "N/A",
+        "support": format_price(support),
+        "resistance": format_price(resistance),
         "trend": trend,
         "rsi": round(rsi, 2),
         "confidence": 0,
