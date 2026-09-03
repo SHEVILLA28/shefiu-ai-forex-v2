@@ -7,31 +7,25 @@ import pandas as pd
 
 
 # =========================================================
-# FCSAPI SETTINGS
+# TWELVE DATA SETTINGS
 # =========================================================
 
-API_KEY = os.getenv("FCSAPI_API_KEY")
+API_KEY = os.getenv("TWELVE_DATA_API_KEY")
 
-BASE_URL = "https://api-v4.fcsapi.com/forex/history"
+BASE_URL = "https://api.twelvedata.com/time_series"
 
 MIN_CANDLES = 100
 
 
 # =========================================================
-# FCSAPI RATE LIMIT PROTECTION
-#
-# Your plan allows 3 requests per minute.
-# We wait 21 seconds between every API request.
-# This protection works for BOTH:
-# - Automatic scanner
-# - Manual Telegram analysis
+# REQUEST PROTECTION
 # =========================================================
 
 API_REQUEST_LOCK = threading.Lock()
 
 LAST_API_REQUEST_TIME = 0
 
-MIN_REQUEST_INTERVAL = 21
+MIN_REQUEST_INTERVAL = 8
 
 
 # =========================================================
@@ -39,20 +33,20 @@ MIN_REQUEST_INTERVAL = 21
 # =========================================================
 
 TIMEFRAME_MAP = {
-    "1M": "1m",
-    "2M": "2m",
-    "3M": "3m",
-    "5M": "5m",
+    "1M": "1min",
+    "2M": "1min",
+    "3M": "1min",
+    "5M": "5min",
 }
 
 
 # =========================================================
-# CONVERT PAIR FORMAT
+# FORMAT SYMBOL
 # =========================================================
 
 def format_symbol(pair):
 
-    return pair.replace("/", "")
+    return pair.upper().replace(" ", "")
 
 
 # =========================================================
@@ -63,7 +57,6 @@ def wait_for_rate_limit():
 
     global LAST_API_REQUEST_TIME
 
-
     with API_REQUEST_LOCK:
 
         current_time = time.time()
@@ -72,14 +65,12 @@ def wait_for_rate_limit():
             current_time - LAST_API_REQUEST_TIME
         )
 
-
         if LAST_API_REQUEST_TIME > 0:
 
             remaining_time = (
                 MIN_REQUEST_INTERVAL
                 - time_since_last_request
             )
-
 
             if remaining_time > 0:
 
@@ -90,12 +81,11 @@ def wait_for_rate_limit():
 
                 time.sleep(remaining_time)
 
-
         LAST_API_REQUEST_TIME = time.time()
 
 
 # =========================================================
-# GET MARKET DATA
+# GET MARKET DATA FROM TWELVE DATA
 # =========================================================
 
 def get_market_data(pair, timeframe):
@@ -103,7 +93,7 @@ def get_market_data(pair, timeframe):
     if not API_KEY:
 
         error_message = (
-            "FCSAPI_API_KEY is not configured in Render."
+            "TWELVE_DATA_API_KEY is not configured in Render."
         )
 
         print(error_message)
@@ -111,9 +101,9 @@ def get_market_data(pair, timeframe):
         return None, error_message
 
 
-    period = TIMEFRAME_MAP.get(
+    interval = TIMEFRAME_MAP.get(
         timeframe,
-        "5m"
+        "5min"
     )
 
     symbol = format_symbol(pair)
@@ -121,24 +111,21 @@ def get_market_data(pair, timeframe):
 
     params = {
         "symbol": symbol,
-        "period": period,
-        "length": 150,
-        "access_key": API_KEY,
+        "interval": interval,
+        "outputsize": 150,
+        "apikey": API_KEY,
+        "format": "JSON",
     }
 
 
     try:
 
-        # =============================================
-        # PROTECT API FROM RATE LIMIT
-        # =============================================
-
         wait_for_rate_limit()
 
 
         print(
-            f"Requesting FCSAPI market data: "
-            f"{symbol} | {period}"
+            f"Requesting Twelve Data market data: "
+            f"{symbol} | {interval}"
         )
 
 
@@ -150,7 +137,7 @@ def get_market_data(pair, timeframe):
 
 
         print(
-            f"FCSAPI status code: "
+            f"Twelve Data status code: "
             f"{response.status_code}"
         )
 
@@ -161,7 +148,7 @@ def get_market_data(pair, timeframe):
     except Exception as e:
 
         error_message = (
-            f"FCSAPI market request error: {e}"
+            f"Twelve Data market request error: {e}"
         )
 
         print(error_message)
@@ -173,46 +160,34 @@ def get_market_data(pair, timeframe):
     # CHECK API RESPONSE
     # =====================================================
 
-    if not data.get("status"):
+    if data.get("status") == "error":
 
         error_message = (
-            data.get("msg")
-            or data.get("message")
-            or "FCSAPI did not return market data."
+            data.get("message")
+            or "Twelve Data did not return market data."
         )
-
 
         print(
-            "FCSAPI error:",
+            "Twelve Data error:",
             data
         )
-
-
-        # =============================================
-        # SHOW CLEAR RATE LIMIT MESSAGE
-        # =============================================
-
-        if "rate limit" in str(
-            error_message
-        ).lower():
-
-            error_message = (
-                "FCSAPI rate limit reached. "
-                "The bot will wait before making "
-                "the next request."
-            )
-
 
         return None, str(error_message)
 
 
-    response_data = data.get("response")
+    values = data.get("values")
 
 
-    if not response_data:
+    if not values:
 
         error_message = (
-            "FCSAPI returned no market candles."
+            data.get("message")
+            or "Twelve Data returned no market candles."
+        )
+
+        print(
+            "Twelve Data response:",
+            data
         )
 
         return None, error_message
@@ -226,43 +201,19 @@ def get_market_data(pair, timeframe):
 
         rows = []
 
+        for candle in values:
 
-        if isinstance(response_data, dict):
-
-            candles = list(
-                response_data.values()
-            )
-
-
-        elif isinstance(response_data, list):
-
-            candles = response_data
-
-
-        else:
-
-            return None, (
-                "Unexpected FCSAPI response format."
-            )
-
-
-        for candle in candles:
-
-            if not isinstance(
-                candle,
-                dict
-            ):
+            if not isinstance(candle, dict):
 
                 continue
 
 
             rows.append({
-                "datetime": candle.get("tm"),
-                "timestamp": candle.get("t"),
-                "open": candle.get("o"),
-                "high": candle.get("h"),
-                "low": candle.get("l"),
-                "close": candle.get("c"),
+                "datetime": candle.get("datetime"),
+                "open": candle.get("open"),
+                "high": candle.get("high"),
+                "low": candle.get("low"),
+                "close": candle.get("close"),
             })
 
 
@@ -272,7 +223,7 @@ def get_market_data(pair, timeframe):
         if df.empty:
 
             return None, (
-                "FCSAPI returned empty candle data."
+                "Twelve Data returned empty candle data."
             )
 
 
@@ -314,7 +265,7 @@ def get_market_data(pair, timeframe):
 
 
         print(
-            f"FCSAPI candles received: {len(df)}"
+            f"Twelve Data candles received: {len(df)}"
         )
 
 
@@ -333,7 +284,7 @@ def get_market_data(pair, timeframe):
     except Exception as e:
 
         error_message = (
-            f"FCSAPI data processing error: {e}"
+            f"Twelve Data data processing error: {e}"
         )
 
         print(error_message)
@@ -669,15 +620,9 @@ def get_signal(pair, timeframe="5M"):
             "pair": pair,
             "timeframe": timeframe,
             "signal": "BUY",
-            "entry": format_price(
-                entry
-            ),
-            "take_profit": format_price(
-                take_profit
-            ),
-            "stop_loss": format_price(
-                stop_loss
-            ),
+            "entry": format_price(entry),
+            "take_profit": format_price(take_profit),
+            "stop_loss": format_price(stop_loss),
             "trend": "BUY",
             "rsi": round(rsi, 2),
             "confidence": confidence,
@@ -744,15 +689,9 @@ def get_signal(pair, timeframe="5M"):
             "pair": pair,
             "timeframe": timeframe,
             "signal": "SELL",
-            "entry": format_price(
-                entry
-            ),
-            "take_profit": format_price(
-                take_profit
-            ),
-            "stop_loss": format_price(
-                stop_loss
-            ),
+            "entry": format_price(entry),
+            "take_profit": format_price(take_profit),
+            "stop_loss": format_price(stop_loss),
             "trend": "SELL",
             "rsi": round(rsi, 2),
             "confidence": confidence,
@@ -805,4 +744,4 @@ def get_signal(pair, timeframe="5M"):
         "rsi": round(rsi, 2),
         "confidence": 0,
         "reason": reason
-    }
+        }
