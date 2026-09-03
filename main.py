@@ -144,7 +144,7 @@ def send_telegram_message(message):
 
 
 # =========================================================
-# FOREX PAIRS - 14 PAIRS
+# FOREX PAIRS
 # =========================================================
 
 FOREX_PAIRS = [
@@ -177,7 +177,10 @@ FOREX_PAIRS = [
 
 def convert_to_mt5_symbol(pair):
 
-    symbol = pair.replace("/", "")
+    symbol = pair.replace(
+        "/",
+        ""
+    )
 
     return symbol + "m"
 
@@ -210,12 +213,12 @@ MAX_OPEN_TRADES = 2
 # AUTOMATIC PROFIT / LOSS SETTINGS
 # =========================================================
 
-# Close all open positions when total profit reaches $5
+# Close all positions when total profit reaches $5
 
 TOTAL_PROFIT_TARGET = 5.00
 
 
-# Close all open positions when total loss reaches -$2
+# Close all positions when total loss reaches -$2
 
 TOTAL_LOSS_LIMIT = -2.00
 
@@ -247,6 +250,7 @@ def can_open_new_trade():
 
         open_trade_count = len(positions)
 
+
         print(
             f"Currently open trades: "
             f"{open_trade_count}/{MAX_OPEN_TRADES}"
@@ -272,8 +276,9 @@ def can_open_new_trade():
             f"Error checking open trades: {e}"
         )
 
-        # Safety protection:
-        # Do not open a trade if position checking fails.
+
+        # Safety:
+        # Do not open a new trade if checking fails.
 
         return False
 
@@ -284,12 +289,12 @@ def can_open_new_trade():
 
 def execute_trade(signal, pair):
 
-    symbol = convert_to_mt5_symbol(pair)
+    symbol = convert_to_mt5_symbol(
+        pair
+    )
 
 
-    # =============================================
-    # CHECK MAXIMUM OPEN TRADES FIRST
-    # =============================================
+    # Check maximum open trades
 
     if not can_open_new_trade():
 
@@ -309,12 +314,14 @@ def execute_trade(signal, pair):
                 f"Placing BUY order for {symbol}"
             )
 
+
             result = asyncio.run(
                 place_buy_order(
                     symbol,
                     TRADE_VOLUME
                 )
             )
+
 
             print(
                 f"BUY order result: {result}"
@@ -329,12 +336,14 @@ def execute_trade(signal, pair):
                 f"Placing SELL order for {symbol}"
             )
 
+
             result = asyncio.run(
                 place_sell_order(
                     symbol,
                     TRADE_VOLUME
                 )
             )
+
 
             print(
                 f"SELL order result: {result}"
@@ -354,6 +363,43 @@ def execute_trade(signal, pair):
         )
 
         return False
+
+
+# =========================================================
+# CLOSE ALL OPEN POSITIONS
+# =========================================================
+
+def close_all_positions(positions):
+
+    for position in positions:
+
+        position_id = position.get(
+            "id"
+        )
+
+
+        if position_id:
+
+            try:
+
+                print(
+                    f"Closing position: {position_id}"
+                )
+
+
+                asyncio.run(
+                    close_position(
+                        position_id
+                    )
+                )
+
+
+            except Exception as e:
+
+                print(
+                    f"Error closing position "
+                    f"{position_id}: {e}"
+                )
 
 
 # =========================================================
@@ -397,6 +443,7 @@ def run_position_monitor():
                         )
                     )
 
+
                     total_profit += profit
 
 
@@ -407,7 +454,7 @@ def run_position_monitor():
 
 
                 # =====================================
-                # PROFIT TARGET REACHED
+                # PROFIT TARGET
                 # =====================================
 
                 if total_profit >= TOTAL_PROFIT_TARGET:
@@ -417,41 +464,32 @@ def run_position_monitor():
                         f"${total_profit:.2f}"
                     )
 
+
                     print(
                         "Closing all open positions..."
                     )
 
 
-                    for position in positions:
-
-                        position_id = position.get("id")
-
-
-                        if position_id:
-
-                            try:
-
-                                asyncio.run(
-                                    close_position(position_id)
-                                )
-
-                            except Exception as e:
-
-                                print(
-                                    f"Error closing position "
-                                    f"{position_id}: {e}"
-                                )
+                    close_all_positions(
+                        positions
+                    )
 
 
                     send_telegram_message(
                         f"🟢 PROFIT TARGET REACHED\n\n"
-                        f"Total Profit: ${total_profit:.2f}\n\n"
+                        f"Total Profit: "
+                        f"${total_profit:.2f}\n\n"
                         f"Closing all open trades."
                     )
 
 
+                    # Give MetaAPI time to synchronize
+
+                    time.sleep(5)
+
+
                 # =====================================
-                # LOSS LIMIT REACHED
+                # LOSS LIMIT
                 # =====================================
 
                 elif total_profit <= TOTAL_LOSS_LIMIT:
@@ -461,37 +499,28 @@ def run_position_monitor():
                         f"${total_profit:.2f}"
                     )
 
+
                     print(
                         "Closing all open positions..."
                     )
 
 
-                    for position in positions:
-
-                        position_id = position.get("id")
-
-
-                        if position_id:
-
-                            try:
-
-                                asyncio.run(
-                                    close_position(position_id)
-                                )
-
-                            except Exception as e:
-
-                                print(
-                                    f"Error closing position "
-                                    f"{position_id}: {e}"
-                                )
+                    close_all_positions(
+                        positions
+                    )
 
 
                     send_telegram_message(
                         f"🔴 LOSS LIMIT REACHED\n\n"
-                        f"Total Loss: ${total_profit:.2f}\n\n"
+                        f"Total Loss: "
+                        f"${total_profit:.2f}\n\n"
                         f"Closing all open trades."
                     )
+
+
+                    # Give MetaAPI time to synchronize
+
+                    time.sleep(5)
 
 
         except Exception as e:
@@ -562,7 +591,9 @@ def run_automatic_scanner():
 
                     if signal in ["BUY", "SELL"]:
 
-                        previous_signal = LAST_SIGNAL.get(pair)
+                        previous_signal = LAST_SIGNAL.get(
+                            pair
+                        )
 
 
                         # =================================
@@ -580,4 +611,205 @@ def run_automatic_scanner():
                         else:
 
                             print(
-                                f"
+                                f"NEW {signal} SIGNAL "
+                                f"FOR {pair}"
+                            )
+
+
+                            # =============================
+                            # PLACE AUTOMATIC TRADE
+                            # =============================
+
+                            trade_success = execute_trade(
+                                signal,
+                                pair
+                            )
+
+
+                            if trade_success:
+
+                                LAST_SIGNAL[pair] = signal
+
+
+                                print(
+                                    f"{signal} trade placed "
+                                    f"successfully for {pair}"
+                                )
+
+
+                                # =========================
+                                # TELEGRAM SUCCESS MESSAGE
+                                # =========================
+
+                                message = format_signal(
+                                    result
+                                )
+
+
+                                message += (
+                                    "\n\n🤖 AUTOMATIC TRADE "
+                                    "PLACED SUCCESSFULLY"
+                                )
+
+
+                                send_telegram_message(
+                                    message
+                                )
+
+
+                            else:
+
+                                print(
+                                    f"Trade was not placed "
+                                    f"for {pair}"
+                                )
+
+
+                                # Do not mark as successful
+
+                                message = (
+                                    f"⚠️ SIGNAL DETECTED\n\n"
+                                    f"Pair: {pair}\n"
+                                    f"Signal: {signal}\n\n"
+                                    f"Automatic trade was blocked "
+                                    f"or failed."
+                                )
+
+
+                                send_telegram_message(
+                                    message
+                                )
+
+
+                    else:
+
+                        # Reset duplicate signal memory
+
+                        LAST_SIGNAL[pair] = None
+
+
+                    # Small delay between pairs
+
+                    time.sleep(3)
+
+
+                except Exception as e:
+
+                    print(
+                        f"Scanner error for "
+                        f"{pair}: {e}"
+                    )
+
+
+                    time.sleep(3)
+
+
+            print(
+                "Forex scan completed."
+            )
+
+
+        except Exception as e:
+
+            print(
+                f"Automatic scanner error: {e}"
+            )
+
+
+        print(
+            f"Waiting {SCAN_INTERVAL} seconds "
+            "before next scan..."
+        )
+
+
+        time.sleep(
+            SCAN_INTERVAL
+        )
+
+
+# =========================================================
+# START BOT
+# =========================================================
+
+if __name__ == "__main__":
+
+    print(
+        "Starting SHEFIU AI FOREX V2..."
+    )
+
+
+    # =============================================
+    # START RENDER HEALTH SERVER
+    # =============================================
+
+    health_thread = threading.Thread(
+        target=run_health_server,
+        daemon=True
+    )
+
+    health_thread.start()
+
+
+    print(
+        "Health server started."
+    )
+
+
+    # =============================================
+    # START TELEGRAM MANUAL BOT
+    # =============================================
+
+    telegram_thread = threading.Thread(
+        target=run_telegram_bot,
+        daemon=True
+    )
+
+    telegram_thread.start()
+
+
+    print(
+        "Manual Telegram bot started."
+    )
+
+
+    # =============================================
+    # START AUTOMATIC FOREX SCANNER
+    # =============================================
+
+    scanner_thread = threading.Thread(
+        target=run_automatic_scanner,
+        daemon=True
+    )
+
+    scanner_thread.start()
+
+
+    print(
+        "Automatic Forex scanner started."
+    )
+
+
+    # =============================================
+    # START PROFIT / LOSS MONITOR
+    # =============================================
+
+    monitor_thread = threading.Thread(
+        target=run_position_monitor,
+        daemon=True
+    )
+
+    monitor_thread.start()
+
+
+    print(
+        "Automatic profit/loss monitor started."
+    )
+
+
+    # =============================================
+    # KEEP RENDER SERVICE RUNNING
+    # =============================================
+
+    while True:
+
+        time.sleep(60)
