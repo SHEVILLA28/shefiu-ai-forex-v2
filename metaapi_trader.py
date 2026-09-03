@@ -31,24 +31,32 @@ RETRY_DELAY = 10
 async def get_connection():
 
     if not METAAPI_TOKEN:
+
         raise Exception(
             "METAAPI_TOKEN is missing"
         )
 
+
     if not METAAPI_ACCOUNT_ID:
+
         raise Exception(
             "METAAPI_ACCOUNT_ID is missing"
         )
 
+
     print("Connecting to MetaAPI...")
 
+
     api = MetaApi(METAAPI_TOKEN)
+
 
     account = await api.metatrader_account_api.get_account(
         METAAPI_ACCOUNT_ID
     )
 
+
     connection = account.get_rpc_connection()
+
 
     for attempt in range(
         1,
@@ -62,19 +70,25 @@ async def get_connection():
                 f"{attempt}/{MAX_CONNECTION_ATTEMPTS}"
             )
 
+
             await connection.connect()
+
 
             print(
                 "Waiting for MetaTrader synchronization..."
             )
 
+
             await connection.wait_synchronized()
+
 
             print(
                 "MetaAPI connected and synchronized successfully!"
             )
 
+
             return connection
+
 
         except Exception as e:
 
@@ -82,13 +96,18 @@ async def get_connection():
                 f"Connection attempt {attempt} failed: {e}"
             )
 
+
             if attempt < MAX_CONNECTION_ATTEMPTS:
 
                 print(
                     f"Waiting {RETRY_DELAY} seconds..."
                 )
 
-                await asyncio.sleep(RETRY_DELAY)
+
+                await asyncio.sleep(
+                    RETRY_DELAY
+                )
+
 
             else:
 
@@ -99,48 +118,86 @@ async def get_connection():
 
 # =========================================================
 # PLACE BUY ORDER
+# WITH STOP LOSS AND TAKE PROFIT
 # =========================================================
 
-async def place_buy_order(symbol, volume):
+async def place_buy_order(
+    symbol,
+    volume,
+    stop_loss=None,
+    take_profit=None
+):
 
     connection = await get_connection()
 
+
     print(
-        f"Placing BUY: {symbol} | Volume: {volume}"
+        f"Placing BUY: {symbol} "
+        f"| Volume: {volume}"
     )
+
+
+    print(
+        f"Stop Loss: {stop_loss} "
+        f"| Take Profit: {take_profit}"
+    )
+
 
     result = await connection.create_market_buy_order(
         symbol,
-        volume
+        volume,
+        stop_loss,
+        take_profit
     )
+
 
     print(
         f"BUY order result: {result}"
     )
+
 
     return result
 
 
 # =========================================================
 # PLACE SELL ORDER
+# WITH STOP LOSS AND TAKE PROFIT
 # =========================================================
 
-async def place_sell_order(symbol, volume):
+async def place_sell_order(
+    symbol,
+    volume,
+    stop_loss=None,
+    take_profit=None
+):
 
     connection = await get_connection()
 
+
     print(
-        f"Placing SELL: {symbol} | Volume: {volume}"
+        f"Placing SELL: {symbol} "
+        f"| Volume: {volume}"
     )
+
+
+    print(
+        f"Stop Loss: {stop_loss} "
+        f"| Take Profit: {take_profit}"
+    )
+
 
     result = await connection.create_market_sell_order(
         symbol,
-        volume
+        volume,
+        stop_loss,
+        take_profit
     )
+
 
     print(
         f"SELL order result: {result}"
     )
+
 
     return result
 
@@ -153,11 +210,14 @@ async def get_open_positions():
 
     connection = await get_connection()
 
+
     positions = await connection.get_positions()
+
 
     print(
         f"Open positions found: {len(positions)}"
     )
+
 
     return positions
 
@@ -170,7 +230,9 @@ async def get_total_profit():
 
     positions = await get_open_positions()
 
+
     total_profit = 0.0
+
 
     for position in positions:
 
@@ -179,11 +241,17 @@ async def get_total_profit():
             0
         )
 
-        total_profit += float(profit)
+
+        total_profit += float(
+            profit
+        )
+
 
     print(
-        f"Total open profit/loss: ${total_profit:.2f}"
+        f"Total open profit/loss: "
+        f"${total_profit:.2f}"
     )
+
 
     return total_profit
 
@@ -196,17 +264,21 @@ async def close_position(position_id):
 
     connection = await get_connection()
 
+
     print(
         f"Closing position: {position_id}"
     )
+
 
     result = await connection.close_position(
         position_id
     )
 
+
     print(
         f"Close result: {result}"
     )
+
 
     return result
 
@@ -219,11 +291,13 @@ async def close_all_positions():
 
     positions = await get_open_positions()
 
+
     if not positions:
 
         print(
             "No open positions to close."
         )
+
 
         return 0
 
@@ -235,12 +309,16 @@ async def close_all_positions():
 
         try:
 
-            position_id = position.get("id")
+            position_id = position.get(
+                "id"
+            )
+
 
             symbol = position.get(
                 "symbol",
                 "Unknown"
             )
+
 
             if position_id:
 
@@ -249,11 +327,14 @@ async def close_all_positions():
                     f"| Position ID: {position_id}"
                 )
 
+
                 await close_position(
                     position_id
                 )
 
+
                 closed_count += 1
+
 
                 await asyncio.sleep(1)
 
@@ -268,5 +349,6 @@ async def close_all_positions():
     print(
         f"Closed positions: {closed_count}"
     )
+
 
     return closed_count
