@@ -107,7 +107,7 @@ def send_telegram_message(message):
     data = {
         "chat_id": CHAT_ID,
         "text": message
-    )
+    }
 
 
     try:
@@ -118,11 +118,9 @@ def send_telegram_message(message):
             timeout=30
         )
 
-
         print(
             f"Telegram status: {response.status_code}"
         )
-
 
         if not response.ok:
 
@@ -130,7 +128,6 @@ def send_telegram_message(message):
                 "Telegram response:",
                 response.text
             )
-
 
         return response.ok
 
@@ -145,30 +142,50 @@ def send_telegram_message(message):
 
 
 # =========================================================
-# FOREX PAIRS - DEMO TEST
+# FOREX PAIRS - 14 PAIRS
 # =========================================================
 
 FOREX_PAIRS = [
 
     "EUR/USD",
     "GBP/USD",
+    "AUD/USD",
+    "NZD/USD",
+
     "USD/JPY",
-    "AUD/USD"
+    "USD/CHF",
+    "USD/CAD",
+
+    "EUR/GBP",
+    "EUR/JPY",
+    "EUR/CHF",
+
+    "GBP/JPY",
+    "GBP/CHF",
+
+    "AUD/JPY",
+    "NZD/JPY"
 
 ]
 
 
 # =========================================================
 # METAAPI SYMBOL CONVERSION
-# EXNESS MT5 USES THE "m" SUFFIX
+#
+# YOUR MT5 ACCOUNT USES SYMBOLS LIKE:
+# EURUSDm
+# GBPUSDm
+# AUDUSDm
 # =========================================================
 
 def convert_to_mt5_symbol(pair):
 
-    return pair.replace(
+    symbol = pair.replace(
         "/",
         ""
-    ) + "m"
+    )
+
+    return symbol + "m"
 
 
 # =========================================================
@@ -183,14 +200,14 @@ TIMEFRAME = "5M"
 SCAN_INTERVAL = 21600
 
 
-# Trade volume
+# Demo trade volume
 
 TRADE_VOLUME = 0.01
 
 
 # =========================================================
 # SIGNAL MEMORY
-# PREVENTS DUPLICATE TRADES
+# PREVENT DUPLICATE TRADES
 # =========================================================
 
 LAST_SIGNAL = {}
@@ -215,7 +232,6 @@ def execute_trade(signal, pair):
                 f"Placing BUY order for {symbol}"
             )
 
-
             result = asyncio.run(
                 place_buy_order(
                     symbol,
@@ -223,11 +239,9 @@ def execute_trade(signal, pair):
                 )
             )
 
-
             print(
                 f"BUY order result: {result}"
             )
-
 
             return True
 
@@ -238,7 +252,6 @@ def execute_trade(signal, pair):
                 f"Placing SELL order for {symbol}"
             )
 
-
             result = asyncio.run(
                 place_sell_order(
                     symbol,
@@ -246,11 +259,9 @@ def execute_trade(signal, pair):
                 )
             )
 
-
             print(
                 f"SELL order result: {result}"
             )
-
 
             return True
 
@@ -318,12 +329,20 @@ def run_automatic_scanner():
                     )
 
 
+                    # =====================================
+                    # BUY OR SELL SIGNAL
+                    # =====================================
+
                     if signal in ["BUY", "SELL"]:
 
-                        previous_signal = (
-                            LAST_SIGNAL.get(pair)
+                        previous_signal = LAST_SIGNAL.get(
+                            pair
                         )
 
+
+                        # =================================
+                        # PREVENT DUPLICATE TRADES
+                        # =================================
 
                         if previous_signal == signal:
 
@@ -341,7 +360,9 @@ def run_automatic_scanner():
                             )
 
 
-                            # Place automatic trade
+                            # =============================
+                            # PLACE AUTOMATIC TRADE
+                            # =============================
 
                             trade_success = execute_trade(
                                 signal,
@@ -360,7 +381,9 @@ def run_automatic_scanner():
                                 )
 
 
-                                # Send Telegram confirmation
+                                # =========================
+                                # SEND TELEGRAM MESSAGE
+                                # =========================
 
                                 message = format_signal(
                                     result
@@ -400,7 +423,7 @@ def run_automatic_scanner():
 
                     else:
 
-                        # Reset memory when no trade exists
+                        # Reset memory when there is no trade
 
                         LAST_SIGNAL[pair] = None
 
@@ -476,27 +499,6 @@ if __name__ == "__main__":
 
     print(
         "Manual Telegram bot started."
-    )
-
-
-    # =====================================================
-    # TEMPORARY METAAPI DEMO TEST
-    # WARNING: REMOVE AFTER SUCCESSFUL TEST
-    # =====================================================
-
-    print(
-        "Testing MetaAPI DEMO connection..."
-    )
-
-
-    test_success = execute_trade(
-        "BUY",
-        "EUR/USD"
-    )
-
-
-    print(
-        f"MetaAPI test result: {test_success}"
     )
 
 
