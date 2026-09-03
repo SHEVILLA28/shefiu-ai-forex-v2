@@ -1,75 +1,54 @@
-# =========================================================
-# START BOT
-# =========================================================
+import os
 
-if __name__ == "__main__":
+from metaapi_cloud_sdk import MetaApi
 
-    print(
-        "Starting SHEFIU AI FOREX V2..."
+
+METAAPI_TOKEN = os.getenv("METAAPI_TOKEN")
+METAAPI_ACCOUNT_ID = os.getenv("METAAPI_ACCOUNT_ID")
+
+
+async def get_connection():
+
+    if not METAAPI_TOKEN:
+        raise Exception("METAAPI_TOKEN is missing")
+
+    if not METAAPI_ACCOUNT_ID:
+        raise Exception("METAAPI_ACCOUNT_ID is missing")
+
+    api = MetaApi(METAAPI_TOKEN)
+
+    account = await api.metatrader_account_api.get_account(
+        METAAPI_ACCOUNT_ID
     )
 
+    connection = account.get_rpc_connection()
 
-    # Start Render health server
+    await connection.connect()
 
-    health_thread = threading.Thread(
-        target=run_health_server,
-        daemon=True
+    await connection.wait_synchronized()
+
+    return connection
+
+
+async def place_buy_order(symbol, volume):
+
+    connection = await get_connection()
+
+    result = await connection.create_market_buy_order(
+        symbol,
+        volume
     )
 
-    health_thread.start()
+    return result
 
 
-    # Start Telegram manual bot
+async def place_sell_order(symbol, volume):
 
-    telegram_thread = threading.Thread(
-        target=run_telegram_bot,
-        daemon=True
+    connection = await get_connection()
+
+    result = await connection.create_market_sell_order(
+        symbol,
+        volume
     )
 
-    telegram_thread.start()
-
-
-    print(
-        "Manual Telegram bot started."
-    )
-
-
-    # =============================================
-    # TEMPORARY METAAPI TEST TRADE
-    # DEMO ACCOUNT ONLY
-    # =============================================
-
-    print(
-        "Testing MetaAPI connection with EURUSD BUY..."
-    )
-
-    test_success = execute_trade(
-        "BUY",
-        "EUR/USD"
-    )
-
-    print(
-        f"MetaAPI test result: {test_success}"
-    )
-
-
-    # Start automatic Forex scanner
-
-    scanner_thread = threading.Thread(
-        target=run_automatic_scanner,
-        daemon=True
-    )
-
-    scanner_thread.start()
-
-
-    print(
-        "Automatic Forex scanner started."
-    )
-
-
-    # Keep Render service running
-
-    while True:
-
-        time.sleep(60)
+    return result
