@@ -120,9 +120,11 @@ def send_telegram_message(message):
             timeout=30
         )
 
+
         print(
             f"Telegram status: {response.status_code}"
         )
+
 
         if not response.ok:
 
@@ -130,6 +132,7 @@ def send_telegram_message(message):
                 "Telegram response:",
                 response.text
             )
+
 
         return response.ok
 
@@ -177,7 +180,10 @@ FOREX_PAIRS = [
 
 def convert_to_mt5_symbol(pair):
 
-    symbol = pair.replace("/", "")
+    symbol = pair.replace(
+        "/",
+        ""
+    )
 
     return symbol + "m"
 
@@ -189,12 +195,18 @@ def convert_to_mt5_symbol(pair):
 TIMEFRAME = "5M"
 
 
+# =========================================================
+# SCAN SETTINGS
+# =========================================================
+
 # Scan every 6 hours
 
 SCAN_INTERVAL = 21600
 
 
-# Trade volume
+# =========================================================
+# TRADE VOLUME
+# =========================================================
 
 TRADE_VOLUME = 0.01
 
@@ -245,6 +257,7 @@ def check_trade_permission():
             get_open_positions()
         )
 
+
         open_trade_count = len(positions)
 
 
@@ -264,6 +277,7 @@ def check_trade_permission():
                 "Maximum open trade limit reached. "
                 "No new trade will be opened."
             )
+
 
             return (
                 False,
@@ -302,12 +316,84 @@ def check_trade_permission():
 
 # =========================================================
 # AUTOMATIC TRADE EXECUTION
+# WITH STOP LOSS AND TAKE PROFIT
 # =========================================================
 
-def execute_trade(signal, pair):
+def execute_trade(result, pair):
+
+
+    # =============================================
+    # GET SIGNAL
+    # =============================================
+
+    signal = result.get(
+        "signal",
+        "NO TRADE"
+    )
+
+
+    # =============================================
+    # GET STOP LOSS
+    # =============================================
+
+    stop_loss = result.get(
+        "stop_loss"
+    )
+
+
+    # =============================================
+    # GET TAKE PROFIT
+    # =============================================
+
+    take_profit = result.get(
+        "take_profit"
+    )
+
+
+    # =============================================
+    # CHECK STOP LOSS / TAKE PROFIT
+    # =============================================
+
+    try:
+
+        stop_loss = float(
+            stop_loss
+        )
+
+
+        take_profit = float(
+            take_profit
+        )
+
+
+    except Exception as e:
+
+        print(
+            f"Invalid Stop Loss or Take Profit "
+            f"for {pair}: {e}"
+        )
+
+
+        return (
+            False,
+            "INVALID_SL_TP"
+        )
+
+
+    # =============================================
+    # CONVERT SYMBOL
+    # =============================================
 
     symbol = convert_to_mt5_symbol(
         pair
+    )
+
+
+    print(
+        f"Trade setup for {symbol} | "
+        f"Signal: {signal} | "
+        f"SL: {stop_loss} | "
+        f"TP: {take_profit}"
     )
 
 
@@ -322,12 +408,15 @@ def execute_trade(signal, pair):
 
     if not allowed:
 
+
         if status == "MAX_TRADES_REACHED":
 
             print(
                 f"Trade BLOCKED for {symbol}: "
-                f"maximum {MAX_OPEN_TRADES} open trades reached."
+                f"maximum {MAX_OPEN_TRADES} "
+                f"open trades reached."
             )
+
 
             return (
                 False,
@@ -335,19 +424,23 @@ def execute_trade(signal, pair):
             )
 
 
-        print(
-            f"Trade BLOCKED for {symbol}: "
-            "unable to safely check open positions."
-        )
+        elif status == "POSITION_CHECK_FAILED":
 
-        return (
-            False,
-            "POSITION_CHECK_FAILED"
-        )
+            print(
+                f"Trade BLOCKED for {symbol}: "
+                "unable to safely check "
+                "open positions."
+            )
+
+
+            return (
+                False,
+                "POSITION_CHECK_FAILED"
+            )
 
 
     # =============================================
-    # PLACE BUY OR SELL ORDER
+    # PLACE BUY ORDER
     # =============================================
 
     try:
@@ -358,22 +451,42 @@ def execute_trade(signal, pair):
                 f"Placing BUY order for {symbol}"
             )
 
-            result = asyncio.run(
+
+            print(
+                f"BUY Stop Loss: {stop_loss}"
+            )
+
+
+            print(
+                f"BUY Take Profit: {take_profit}"
+            )
+
+
+            result_order = asyncio.run(
                 place_buy_order(
                     symbol,
-                    TRADE_VOLUME
+                    TRADE_VOLUME,
+                    stop_loss,
+                    take_profit
                 )
             )
 
+
             print(
-                f"BUY order result: {result}"
+                f"BUY order result: "
+                f"{result_order}"
             )
+
 
             return (
                 True,
                 "TRADE_PLACED"
             )
 
+
+        # =========================================
+        # PLACE SELL ORDER
+        # =========================================
 
         elif signal == "SELL":
 
@@ -381,22 +494,42 @@ def execute_trade(signal, pair):
                 f"Placing SELL order for {symbol}"
             )
 
-            result = asyncio.run(
+
+            print(
+                f"SELL Stop Loss: {stop_loss}"
+            )
+
+
+            print(
+                f"SELL Take Profit: {take_profit}"
+            )
+
+
+            result_order = asyncio.run(
                 place_sell_order(
                     symbol,
-                    TRADE_VOLUME
+                    TRADE_VOLUME,
+                    stop_loss,
+                    take_profit
                 )
             )
 
+
             print(
-                f"SELL order result: {result}"
+                f"SELL order result: "
+                f"{result_order}"
             )
+
 
             return (
                 True,
                 "TRADE_PLACED"
             )
 
+
+        # =========================================
+        # INVALID SIGNAL
+        # =========================================
 
         return (
             False,
@@ -411,6 +544,7 @@ def execute_trade(signal, pair):
             f"{symbol}: {e}"
         )
 
+
         return (
             False,
             "TRADE_FAILED"
@@ -424,13 +558,16 @@ def execute_trade(signal, pair):
 def close_all_positions(positions):
 
     print(
-        f"Closing {len(positions)} open position(s)..."
+        f"Closing {len(positions)} "
+        f"open position(s)..."
     )
 
 
     for position in positions:
 
-        position_id = position.get("id")
+        position_id = position.get(
+            "id"
+        )
 
 
         if position_id:
@@ -438,7 +575,8 @@ def close_all_positions(positions):
             try:
 
                 print(
-                    f"Closing position: {position_id}"
+                    f"Closing position: "
+                    f"{position_id}"
                 )
 
 
@@ -482,12 +620,21 @@ def run_position_monitor():
             )
 
 
+            # =====================================
+            # NO OPEN POSITIONS
+            # =====================================
+
             if not positions:
 
                 print(
-                    "Position monitor: No open positions."
+                    "Position monitor: "
+                    "No open positions."
                 )
 
+
+            # =====================================
+            # CHECK OPEN POSITIONS
+            # =====================================
 
             else:
 
@@ -502,6 +649,7 @@ def run_position_monitor():
                             0
                         )
                     )
+
 
                     total_profit += profit
 
@@ -524,6 +672,11 @@ def run_position_monitor():
                     )
 
 
+                    print(
+                        "Closing all open trades..."
+                    )
+
+
                     close_all_positions(
                         positions
                     )
@@ -536,6 +689,9 @@ def run_position_monitor():
                         f"🤖 Closing all open trades."
                     )
 
+
+                    # Give MetaAPI time
+                    # to synchronize
 
                     time.sleep(5)
 
@@ -552,6 +708,11 @@ def run_position_monitor():
                     )
 
 
+                    print(
+                        "Closing all open trades..."
+                    )
+
+
                     close_all_positions(
                         positions
                     )
@@ -564,6 +725,9 @@ def run_position_monitor():
                         f"🤖 Closing all open trades."
                     )
 
+
+                    # Give MetaAPI time
+                    # to synchronize
 
                     time.sleep(5)
 
@@ -600,6 +764,10 @@ def run_automatic_scanner():
             )
 
 
+            # =========================================
+            # SCAN EVERY FOREX PAIR
+            # =========================================
+
             for pair in FOREX_PAIRS:
 
                 try:
@@ -608,6 +776,10 @@ def run_automatic_scanner():
                         f"Analyzing {pair}..."
                     )
 
+
+                    # =================================
+                    # GET SIGNAL
+                    # =================================
 
                     result = get_signal(
                         pair,
@@ -624,34 +796,45 @@ def run_automatic_scanner():
                     print(
                         f"Result for {pair}: "
                         f"{signal} | "
-                        f"Trend: {result.get('trend')} | "
-                        f"RSI: {result.get('rsi')} | "
-                        f"Reason: {result.get('reason')}"
+                        f"Trend: "
+                        f"{result.get('trend')} | "
+                        f"RSI: "
+                        f"{result.get('rsi')} | "
+                        f"Reason: "
+                        f"{result.get('reason')}"
                     )
 
 
-                    # =====================================
+                    # =================================
                     # BUY OR SELL SIGNAL
-                    # =====================================
+                    # =================================
 
                     if signal in ["BUY", "SELL"]:
 
-                        previous_signal = LAST_SIGNAL.get(
-                            pair
+
+                        previous_signal = (
+                            LAST_SIGNAL.get(
+                                pair
+                            )
                         )
 
 
-                        # =================================
+                        # =============================
                         # PREVENT DUPLICATE SIGNAL
-                        # =================================
+                        # =============================
 
                         if previous_signal == signal:
 
                             print(
                                 f"Duplicate {signal} "
-                                f"signal ignored for {pair}"
+                                f"signal ignored for "
+                                f"{pair}"
                             )
 
+
+                        # =============================
+                        # NEW SIGNAL
+                        # =============================
 
                         else:
 
@@ -661,21 +844,22 @@ def run_automatic_scanner():
                             )
 
 
-                            # =============================
+                            # =========================
                             # EXECUTE AUTOMATIC TRADE
-                            # =============================
+                            # WITH SL AND TP
+                            # =========================
 
                             trade_success, trade_status = (
                                 execute_trade(
-                                    signal,
+                                    result,
                                     pair
                                 )
                             )
 
 
-                            # =============================
+                            # =========================
                             # TRADE SUCCESS
-                            # =============================
+                            # =========================
 
                             if trade_success:
 
@@ -683,8 +867,9 @@ def run_automatic_scanner():
 
 
                                 print(
-                                    f"{signal} trade placed "
-                                    f"successfully for {pair}"
+                                    f"{signal} trade "
+                                    f"placed successfully "
+                                    f"for {pair}"
                                 )
 
 
@@ -695,7 +880,9 @@ def run_automatic_scanner():
 
                                 message += (
                                     "\n\n🤖 AUTOMATIC TRADE "
-                                    "PLACED SUCCESSFULLY"
+                                    "PLACED SUCCESSFULLY\n\n"
+                                    "🛑 Stop Loss attached\n"
+                                    "✅ Take Profit attached"
                                 )
 
 
@@ -704,9 +891,9 @@ def run_automatic_scanner():
                                 )
 
 
-                            # =============================
+                            # =========================
                             # MAXIMUM TRADES BLOCKED
-                            # =============================
+                            # =========================
 
                             elif (
                                 trade_status
@@ -714,8 +901,9 @@ def run_automatic_scanner():
                             ):
 
                                 print(
-                                    f"Trade blocked for {pair}: "
-                                    "maximum trade limit reached."
+                                    f"Trade blocked for "
+                                    f"{pair}: maximum "
+                                    f"trade limit reached."
                                 )
 
 
@@ -727,9 +915,11 @@ def run_automatic_scanner():
                                 message += (
                                     "\n\n🛑 TRADE BLOCKED\n\n"
                                     f"Reason: Maximum "
-                                    f"{MAX_OPEN_TRADES} open trades "
-                                    f"already reached.\n\n"
-                                    "🤖 Safety protection is active."
+                                    f"{MAX_OPEN_TRADES} "
+                                    f"open trades already "
+                                    f"reached.\n\n"
+                                    "🤖 Safety protection "
+                                    "is active."
                                 )
 
 
@@ -738,9 +928,9 @@ def run_automatic_scanner():
                                 )
 
 
-                            # =============================
+                            # =========================
                             # POSITION CHECK FAILED
-                            # =============================
+                            # =========================
 
                             elif (
                                 trade_status
@@ -752,8 +942,9 @@ def run_automatic_scanner():
                                     f"Pair: {pair}\n"
                                     f"Signal: {signal}\n\n"
                                     "🛑 TRADE BLOCKED\n\n"
-                                    "Reason: Unable to safely check "
-                                    "open positions."
+                                    "Reason: Unable to "
+                                    "safely check open "
+                                    "positions."
                                 )
 
 
@@ -762,14 +953,42 @@ def run_automatic_scanner():
                                 )
 
 
-                            # =============================
+                            # =========================
+                            # INVALID STOP LOSS / TP
+                            # =========================
+
+                            elif (
+                                trade_status
+                                == "INVALID_SL_TP"
+                            ):
+
+                                message = format_signal(
+                                    result
+                                )
+
+
+                                message += (
+                                    "\n\n⚠️ TRADE BLOCKED\n\n"
+                                    "Reason: Invalid Stop "
+                                    "Loss or Take Profit "
+                                    "value."
+                                )
+
+
+                                send_telegram_message(
+                                    message
+                                )
+
+
+                            # =========================
                             # ACTUAL TRADE FAILURE
-                            # =============================
+                            # =========================
 
                             else:
 
                                 print(
-                                    f"Trade FAILED for {pair}"
+                                    f"Trade FAILED "
+                                    f"for {pair}"
                                 )
 
 
@@ -779,10 +998,12 @@ def run_automatic_scanner():
 
 
                                 message += (
-                                    "\n\n❌ AUTOMATIC TRADE FAILED\n\n"
-                                    "The signal was detected, but "
-                                    "the trade could not be placed. "
-                                    "Check Render logs for details."
+                                    "\n\n❌ AUTOMATIC "
+                                    "TRADE FAILED\n\n"
+                                    "The signal was detected, "
+                                    "but the trade could not "
+                                    "be placed. Check Render "
+                                    "logs for details."
                                 )
 
 
@@ -791,14 +1012,18 @@ def run_automatic_scanner():
                                 )
 
 
-                    else:
+                    # =================================
+                    # NO TRADE
+                    # =================================
 
-                        # Reset duplicate signal memory
+                    else:
 
                         LAST_SIGNAL[pair] = None
 
 
-                    # Small delay between pairs
+                    # =================================
+                    # DELAY BETWEEN PAIRS
+                    # =================================
 
                     time.sleep(3)
 
@@ -827,8 +1052,8 @@ def run_automatic_scanner():
 
 
         print(
-            f"Waiting {SCAN_INTERVAL} seconds "
-            "before next scan..."
+            f"Waiting {SCAN_INTERVAL} "
+            f"seconds before next scan..."
         )
 
 
@@ -857,6 +1082,7 @@ if __name__ == "__main__":
         daemon=True
     )
 
+
     health_thread.start()
 
 
@@ -873,6 +1099,7 @@ if __name__ == "__main__":
         target=run_telegram_bot,
         daemon=True
     )
+
 
     telegram_thread.start()
 
@@ -891,6 +1118,7 @@ if __name__ == "__main__":
         daemon=True
     )
 
+
     scanner_thread.start()
 
 
@@ -907,6 +1135,7 @@ if __name__ == "__main__":
         target=run_position_monitor,
         daemon=True
     )
+
 
     monitor_thread.start()
 
