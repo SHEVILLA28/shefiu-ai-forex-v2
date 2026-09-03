@@ -202,163 +202,31 @@ SCAN_INTERVAL = 21600
 TRADE_VOLUME = 0.01
 
 
-# Maximum number of bot trades
+# =========================================================
+# AUTOMATIC PROFIT / LOSS SETTINGS
+# =========================================================
 
-MAX_OPEN_TRADES = 5
+# Close all monitored positions when total profit reaches $5
 
-
-# Total profit target in USD
-
-PROFIT_TARGET = 5.00
-
-
-# Maximum total loss in USD
-
-MAX_LOSS = -2.00
+TOTAL_PROFIT_TARGET = 5.00
 
 
-# Check profit/loss every 5 seconds
+# Close all monitored positions when total loss reaches -$2
+
+TOTAL_LOSS_LIMIT = -2.00
+
+
+# Check positions every 5 seconds
 
 POSITION_CHECK_INTERVAL = 5
 
 
 # =========================================================
 # SIGNAL MEMORY
+# PREVENT DUPLICATE TRADES
 # =========================================================
 
 LAST_SIGNAL = {}
-
-
-# =========================================================
-# BOT POSITION MEMORY
-#
-# Only positions detected after the bot places a trade
-# are added to this session list.
-# =========================================================
-
-BOT_POSITION_IDS = set()
-
-POSITION_LOCK = threading.Lock()
-
-CLOSING_TRADES = False
-
-
-# =========================================================
-# GET POSITION ID
-# =========================================================
-
-def get_position_id(position):
-
-    return position.get(
-        "id"
-    )
-
-
-# =========================================================
-# GET POSITION PROFIT
-# =========================================================
-
-def get_position_profit(position):
-
-    try:
-
-        return float(
-            position.get(
-                "profit",
-                0
-            )
-        )
-
-    except Exception:
-
-        return 0.0
-
-
-# =========================================================
-# GET OPEN BOT POSITIONS
-# =========================================================
-
-def get_bot_positions():
-
-    global BOT_POSITION_IDS
-
-    positions = asyncio.run(
-        get_open_positions()
-    )
-
-
-    open_positions = []
-
-
-    current_ids = set()
-
-
-    for position in positions:
-
-        position_id = get_position_id(
-            position
-        )
-
-
-        if position_id:
-
-            current_ids.add(
-                position_id
-            )
-
-
-            with POSITION_LOCK:
-
-                if position_id in BOT_POSITION_IDS:
-
-                    open_positions.append(
-                        position
-                    )
-
-
-    # Remove positions that are no longer open
-
-    with POSITION_LOCK:
-
-        BOT_POSITION_IDS = (
-            BOT_POSITION_IDS
-            .intersection(current_ids)
-        )
-
-
-    return open_positions
-
-
-# =========================================================
-# COUNT BOT OPEN TRADES
-# =========================================================
-
-def get_bot_open_trade_count():
-
-    positions = get_bot_positions()
-
-    return len(positions)
-
-
-# =========================================================
-# TOTAL BOT PROFIT / LOSS
-# =========================================================
-
-def get_bot_total_profit():
-
-    positions = get_bot_positions()
-
-    total_profit = 0.0
-
-
-    for position in positions:
-
-        total_profit += get_position_profit(
-            position
-        )
-
-
-    return total_profit, positions
 
 
 # =========================================================
@@ -367,54 +235,6 @@ def get_bot_total_profit():
 
 def execute_trade(signal, pair):
 
-    global CLOSING_TRADES
-
-
-    if CLOSING_TRADES:
-
-        print(
-            "Trade closing is in progress. "
-            "New trade ignored."
-        )
-
-        return False
-
-
-    # Check maximum open trades
-
-    try:
-
-        open_trade_count = (
-            get_bot_open_trade_count()
-        )
-
-
-        print(
-            f"Bot open trades: "
-            f"{open_trade_count}/"
-            f"{MAX_OPEN_TRADES}"
-        )
-
-
-        if open_trade_count >= MAX_OPEN_TRADES:
-
-            print(
-                "Maximum open trades reached. "
-                "No new trade will be placed."
-            )
-
-            return False
-
-
-    except Exception as e:
-
-        print(
-            f"Could not check open trades: {e}"
-        )
-
-        return False
-
-
     symbol = convert_to_mt5_symbol(
         pair
     )
@@ -422,42 +242,11 @@ def execute_trade(signal, pair):
 
     try:
 
-        # =============================================
-        # GET POSITIONS BEFORE OPENING TRADE
-        # =============================================
-
-        positions_before = asyncio.run(
-            get_open_positions()
-        )
-
-
-        ids_before = set()
-
-
-        for position in positions_before:
-
-            position_id = get_position_id(
-                position
-            )
-
-
-            if position_id:
-
-                ids_before.add(
-                    position_id
-                )
-
-
-        # =============================================
-        # PLACE BUY
-        # =============================================
-
         if signal == "BUY":
 
             print(
                 f"Placing BUY order for {symbol}"
             )
-
 
             result = asyncio.run(
                 place_buy_order(
@@ -466,22 +255,18 @@ def execute_trade(signal, pair):
                 )
             )
 
-
             print(
                 f"BUY order result: {result}"
             )
 
+            return True
 
-        # =============================================
-        # PLACE SELL
-        # =============================================
 
         elif signal == "SELL":
 
             print(
                 f"Placing SELL order for {symbol}"
             )
-
 
             result = asyncio.run(
                 place_sell_order(
@@ -490,85 +275,14 @@ def execute_trade(signal, pair):
                 )
             )
 
-
             print(
                 f"SELL order result: {result}"
             )
 
-
-        else:
-
-            return False
+            return True
 
 
-        # =============================================
-        # WAIT FOR MT5 POSITION TO APPEAR
-        # =============================================
-
-        time.sleep(3)
-
-
-        positions_after = asyncio.run(
-            get_open_positions()
-        )
-
-
-        new_positions = []
-
-
-        for position in positions_after:
-
-            position_id = get_position_id(
-                position
-            )
-
-
-            position_symbol = position.get(
-                "symbol",
-                ""
-            )
-
-
-            if (
-                position_id
-                and position_id not in ids_before
-                and position_symbol == symbol
-            ):
-
-                new_positions.append(
-                    position_id
-                )
-
-
-        # =============================================
-        # SAVE BOT POSITION IDs
-        # =============================================
-
-        with POSITION_LOCK:
-
-            for position_id in new_positions:
-
-                BOT_POSITION_IDS.add(
-                    position_id
-                )
-
-
-        if new_positions:
-
-            print(
-                f"Bot positions tracked: "
-                f"{new_positions}"
-            )
-
-        else:
-
-            print(
-                "Trade request completed, but a new "
-                "position ID was not detected yet."
-            )
-
-
-        return True
+        return False
 
 
     except Exception as e:
@@ -582,146 +296,13 @@ def execute_trade(signal, pair):
 
 
 # =========================================================
-# CLOSE BOT POSITIONS
+# AUTOMATIC POSITION MONITOR
 # =========================================================
 
-def close_bot_positions(reason, total_profit):
-
-    global BOT_POSITION_IDS
-    global CLOSING_TRADES
-
-
-    if CLOSING_TRADES:
-
-        return
-
-
-    CLOSING_TRADES = True
-
-
-    try:
-
-        positions = get_bot_positions()
-
-
-        if not positions:
-
-            print(
-                "No tracked bot positions to close."
-            )
-
-            return
-
-
-        print(
-            f"Closing {len(positions)} bot positions..."
-        )
-
-
-        closed_count = 0
-
-
-        for position in positions:
-
-            position_id = get_position_id(
-                position
-            )
-
-
-            symbol = position.get(
-                "symbol",
-                "Unknown"
-            )
-
-
-            if not position_id:
-
-                continue
-
-
-            try:
-
-                print(
-                    f"Closing {symbol} "
-                    f"| Position ID: {position_id}"
-                )
-
-
-                asyncio.run(
-                    close_position(
-                        position_id
-                    )
-                )
-
-
-                closed_count += 1
-
-
-                with POSITION_LOCK:
-
-                    BOT_POSITION_IDS.discard(
-                        position_id
-                    )
-
-
-                time.sleep(1)
-
-
-            except Exception as e:
-
-                print(
-                    f"Error closing "
-                    f"{symbol}: {e}"
-                )
-
-
-        message = (
-
-            f"🤖 SHEFIU AI FOREX V2\n\n"
-
-            f"🔴 AUTOMATIC TRADE CLOSE\n\n"
-
-            f"Reason: {reason}\n"
-
-            f"💰 Total Profit/Loss: "
-            f"${total_profit:.2f}\n"
-
-            f"📊 Positions closed: "
-            f"{closed_count}"
-        )
-
-
-        send_telegram_message(
-            message
-        )
-
-
-        print(
-            f"Trade closing completed. "
-            f"Closed: {closed_count}"
-        )
-
-
-    except Exception as e:
-
-        print(
-            f"Automatic closing error: {e}"
-        )
-
-
-    finally:
-
-        CLOSING_TRADES = False
-
-
-# =========================================================
-# PROFIT / LOSS MONITOR
-# =========================================================
-
-def run_profit_monitor():
+def run_position_monitor():
 
     print(
-        "Profit and loss monitor started."
+        "Automatic profit/loss monitor started."
     )
 
 
@@ -729,66 +310,145 @@ def run_profit_monitor():
 
         try:
 
-            if not CLOSING_TRADES:
+            positions = asyncio.run(
+                get_open_positions()
+            )
 
-                total_profit, positions = (
-                    get_bot_total_profit()
+
+            if not positions:
+
+                print(
+                    "Position monitor: No open positions."
                 )
 
 
-                position_count = len(
-                    positions
+            else:
+
+                total_profit = 0.0
+
+
+                for position in positions:
+
+                    profit = float(
+                        position.get(
+                            "profit",
+                            0
+                        )
+                    )
+
+                    total_profit += profit
+
+
+                print(
+                    f"Total open trade profit/loss: "
+                    f"${total_profit:.2f}"
                 )
 
 
-                if position_count > 0:
+                # =====================================
+                # PROFIT TARGET REACHED
+                # =====================================
+
+                if total_profit >= TOTAL_PROFIT_TARGET:
 
                     print(
-                        f"Bot positions: "
-                        f"{position_count} | "
-                        f"Total P/L: "
+                        f"PROFIT TARGET REACHED: "
                         f"${total_profit:.2f}"
                     )
 
 
-                    # =====================================
-                    # PROFIT TARGET
-                    # =====================================
+                    print(
+                        "Closing all open positions..."
+                    )
 
-                    if total_profit >= PROFIT_TARGET:
 
-                        print(
-                            "PROFIT TARGET REACHED!"
+                    for position in positions:
+
+                        position_id = position.get(
+                            "id"
                         )
 
 
-                        close_bot_positions(
-                            "Profit target reached",
-                            total_profit
+                        if position_id:
+
+                            try:
+
+                                asyncio.run(
+                                    close_position(
+                                        position_id
+                                    )
+                                )
+
+
+                            except Exception as e:
+
+                                print(
+                                    f"Error closing position "
+                                    f"{position_id}: {e}"
+                                )
+
+
+                    send_telegram_message(
+                        f"🟢 PROFIT TARGET REACHED\n\n"
+                        f"Total Profit: ${total_profit:.2f}\n\n"
+                        f"Closing open trades."
+                    )
+
+
+                # =====================================
+                # LOSS LIMIT REACHED
+                # =====================================
+
+                elif total_profit <= TOTAL_LOSS_LIMIT:
+
+                    print(
+                        f"LOSS LIMIT REACHED: "
+                        f"${total_profit:.2f}"
+                    )
+
+
+                    print(
+                        "Closing all open positions..."
+                    )
+
+
+                    for position in positions:
+
+                        position_id = position.get(
+                            "id"
                         )
 
 
-                    # =====================================
-                    # MAXIMUM LOSS
-                    # =====================================
+                        if position_id:
 
-                    elif total_profit <= MAX_LOSS:
+                            try:
 
-                        print(
-                            "MAXIMUM LOSS REACHED!"
-                        )
+                                asyncio.run(
+                                    close_position(
+                                        position_id
+                                    )
+                                )
 
 
-                        close_bot_positions(
-                            "Maximum loss reached",
-                            total_profit
-                        )
+                            except Exception as e:
+
+                                print(
+                                    f"Error closing position "
+                                    f"{position_id}: {e}"
+                                )
+
+
+                    send_telegram_message(
+                        f"🔴 LOSS LIMIT REACHED\n\n"
+                        f"Total Loss: ${total_profit:.2f}\n\n"
+                        f"Closing open trades."
+                    )
 
 
         except Exception as e:
 
             print(
-                f"Profit monitor error: {e}"
+                f"Position monitor error: {e}"
             )
 
 
@@ -820,35 +480,6 @@ def run_automatic_scanner():
             for pair in FOREX_PAIRS:
 
                 try:
-
-                    # Don't open trades while closing
-
-                    if CLOSING_TRADES:
-
-                        print(
-                            "Waiting for positions "
-                            "to finish closing..."
-                        )
-
-                        break
-
-
-                    # Check maximum trades
-
-                    open_trade_count = (
-                        get_bot_open_trade_count()
-                    )
-
-
-                    if open_trade_count >= MAX_OPEN_TRADES:
-
-                        print(
-                            f"Maximum {MAX_OPEN_TRADES} "
-                            "bot trades reached."
-                        )
-
-                        break
-
 
                     print(
                         f"Analyzing {pair}..."
@@ -882,8 +513,8 @@ def run_automatic_scanner():
 
                     if signal in ["BUY", "SELL"]:
 
-                        previous_signal = (
-                            LAST_SIGNAL.get(pair)
+                        previous_signal = LAST_SIGNAL.get(
+                            pair
                         )
 
 
@@ -928,24 +559,18 @@ def run_automatic_scanner():
                                 )
 
 
+                                # =========================
+                                # SEND TELEGRAM MESSAGE
+                                # =========================
+
                                 message = format_signal(
                                     result
                                 )
 
 
                                 message += (
-
                                     "\n\n🤖 AUTOMATIC TRADE "
-                                    "PLACED SUCCESSFULLY\n"
-
-                                    f"📊 Maximum Trades: "
-                                    f"{MAX_OPEN_TRADES}\n"
-
-                                    f"💰 Profit Target: "
-                                    f"${PROFIT_TARGET:.2f}\n"
-
-                                    f"🔴 Maximum Loss: "
-                                    f"${MAX_LOSS:.2f}"
+                                    "PLACED SUCCESSFULLY"
                                 )
 
 
@@ -962,11 +587,129 @@ def run_automatic_scanner():
 
 
                                 message = (
-
                                     f"⚠️ SIGNAL DETECTED\n\n"
-
                                     f"Pair: {pair}\n"
-
                                     f"Signal: {signal}\n\n"
+                                    f"Automatic trade failed."
+                                )
 
-                                    "Automatic trade was not placed
+
+                                send_telegram_message(
+                                    message
+                                )
+
+
+                    else:
+
+                        LAST_SIGNAL[pair] = None
+
+
+                    # Small delay between pairs
+
+                    time.sleep(3)
+
+
+                except Exception as e:
+
+                    print(
+                        f"Scanner error for "
+                        f"{pair}: {e}"
+                    )
+
+                    time.sleep(3)
+
+
+            print(
+                "Forex scan completed."
+            )
+
+
+        except Exception as e:
+
+            print(
+                f"Automatic scanner error: {e}"
+            )
+
+
+        print(
+            f"Waiting {SCAN_INTERVAL} seconds "
+            "before next scan..."
+        )
+
+
+        time.sleep(
+            SCAN_INTERVAL
+        )
+
+
+# =========================================================
+# START BOT
+# =========================================================
+
+if __name__ == "__main__":
+
+    print(
+        "Starting SHEFIU AI FOREX V2..."
+    )
+
+
+    # Start Render health server
+
+    health_thread = threading.Thread(
+        target=run_health_server,
+        daemon=True
+    )
+
+    health_thread.start()
+
+
+    # Start Telegram manual bot
+
+    telegram_thread = threading.Thread(
+        target=run_telegram_bot,
+        daemon=True
+    )
+
+    telegram_thread.start()
+
+
+    print(
+        "Manual Telegram bot started."
+    )
+
+
+    # Start automatic Forex scanner
+
+    scanner_thread = threading.Thread(
+        target=run_automatic_scanner,
+        daemon=True
+    )
+
+    scanner_thread.start()
+
+
+    print(
+        "Automatic Forex scanner started."
+    )
+
+
+    # Start automatic profit/loss monitor
+
+    monitor_thread = threading.Thread(
+        target=run_position_monitor,
+        daemon=True
+    )
+
+    monitor_thread.start()
+
+
+    print(
+        "Automatic profit/loss monitor started."
+    )
+
+
+    # Keep Render service running
+
+    while True:
+
+        time.sleep(60)
