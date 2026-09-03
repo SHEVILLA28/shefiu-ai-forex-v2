@@ -139,30 +139,13 @@ def send_telegram_message(message):
 
 # =========================================================
 # FOREX PAIRS
+# REDUCED TO SAVE API REQUESTS
 # =========================================================
 
 FOREX_PAIRS = [
 
     "EUR/USD",
-    "GBP/USD",
-
-    "USD/JPY",
-    "USD/CHF",
-
-    "AUD/USD",
-    "USD/CAD",
-
-    "NZD/USD",
-    "XAU/USD",
-
-    "EUR/GBP",
-    "CHF/JPY",
-
-    "AUD/JPY",
-    "EUR/JPY",
-
-    "GBP/JPY",
-    "USD/SGD"
+    "GBP/USD"
 
 ]
 
@@ -173,7 +156,9 @@ FOREX_PAIRS = [
 
 TIMEFRAME = "5M"
 
-SCAN_INTERVAL = 300
+
+# Scan every 6 hours to save API requests
+SCAN_INTERVAL = 21600
 
 
 # =========================================================
@@ -277,10 +262,7 @@ def run_automatic_scanner():
 
                             if success:
 
-                                LAST_SIGNAL[pair] = (
-                                    signal
-                                )
-
+                                LAST_SIGNAL[pair] = signal
 
                                 print(
                                     f"{signal} signal sent "
@@ -298,15 +280,12 @@ def run_automatic_scanner():
 
                     else:
 
-                        # Reset signal memory when
-                        # market returns to NO TRADE
+                        # Reset memory when there is no trade
 
                         LAST_SIGNAL[pair] = None
 
 
-                    # =====================================
-                    # DELAY BETWEEN API REQUESTS
-                    # =====================================
+                    # Small delay between pairs
 
                     time.sleep(3)
 
@@ -333,10 +312,6 @@ def run_automatic_scanner():
             )
 
 
-        # =============================================
-        # WAIT BEFORE NEXT FULL MARKET SCAN
-        # =============================================
-
         print(
             f"Waiting {SCAN_INTERVAL} seconds "
             "before next scan..."
@@ -359,9 +334,7 @@ if __name__ == "__main__":
     )
 
 
-    # =====================================================
-    # START RENDER HEALTH SERVER
-    # =====================================================
+    # Start Render health server
 
     health_thread = threading.Thread(
         target=run_health_server,
@@ -371,9 +344,7 @@ if __name__ == "__main__":
     health_thread.start()
 
 
-    # =====================================================
-    # START TELEGRAM MANUAL BOT
-    # =====================================================
+    # Start Telegram manual bot
 
     telegram_thread = threading.Thread(
         target=run_telegram_bot,
@@ -387,9 +358,7 @@ if __name__ == "__main__":
     )
 
 
-    # =====================================================
-    # START AUTOMATIC FOREX SCANNER
-    # =====================================================
+    # Start automatic Forex scanner
 
     scanner_thread = threading.Thread(
         target=run_automatic_scanner,
@@ -403,9 +372,7 @@ if __name__ == "__main__":
     )
 
 
-    # =====================================================
-    # KEEP RENDER SERVICE RUNNING
-    # =====================================================
+    # Keep Render service running
 
     while True:
 
