@@ -177,10 +177,7 @@ FOREX_PAIRS = [
 
 def convert_to_mt5_symbol(pair):
 
-    symbol = pair.replace(
-        "/",
-        ""
-    )
+    symbol = pair.replace("/", "")
 
     return symbol + "m"
 
@@ -203,15 +200,22 @@ TRADE_VOLUME = 0.01
 
 
 # =========================================================
+# MAXIMUM OPEN TRADES PROTECTION
+# =========================================================
+
+MAX_OPEN_TRADES = 2
+
+
+# =========================================================
 # AUTOMATIC PROFIT / LOSS SETTINGS
 # =========================================================
 
-# Close all monitored positions when total profit reaches $5
+# Close all open positions when total profit reaches $5
 
 TOTAL_PROFIT_TARGET = 5.00
 
 
-# Close all monitored positions when total loss reaches -$2
+# Close all open positions when total loss reaches -$2
 
 TOTAL_LOSS_LIMIT = -2.00
 
@@ -230,14 +234,71 @@ LAST_SIGNAL = {}
 
 
 # =========================================================
+# CHECK NUMBER OF OPEN TRADES
+# =========================================================
+
+def can_open_new_trade():
+
+    try:
+
+        positions = asyncio.run(
+            get_open_positions()
+        )
+
+        open_trade_count = len(positions)
+
+        print(
+            f"Currently open trades: "
+            f"{open_trade_count}/{MAX_OPEN_TRADES}"
+        )
+
+
+        if open_trade_count >= MAX_OPEN_TRADES:
+
+            print(
+                "Maximum open trade limit reached. "
+                "No new trade will be opened."
+            )
+
+            return False
+
+
+        return True
+
+
+    except Exception as e:
+
+        print(
+            f"Error checking open trades: {e}"
+        )
+
+        # Safety protection:
+        # Do not open a trade if position checking fails.
+
+        return False
+
+
+# =========================================================
 # AUTOMATIC TRADE EXECUTION
 # =========================================================
 
 def execute_trade(signal, pair):
 
-    symbol = convert_to_mt5_symbol(
-        pair
-    )
+    symbol = convert_to_mt5_symbol(pair)
+
+
+    # =============================================
+    # CHECK MAXIMUM OPEN TRADES FIRST
+    # =============================================
+
+    if not can_open_new_trade():
+
+        print(
+            f"Trade blocked for {symbol}: "
+            "maximum open trade limit reached."
+        )
+
+        return False
 
 
     try:
@@ -356,7 +417,6 @@ def run_position_monitor():
                         f"${total_profit:.2f}"
                     )
 
-
                     print(
                         "Closing all open positions..."
                     )
@@ -364,9 +424,7 @@ def run_position_monitor():
 
                     for position in positions:
 
-                        position_id = position.get(
-                            "id"
-                        )
+                        position_id = position.get("id")
 
 
                         if position_id:
@@ -374,11 +432,8 @@ def run_position_monitor():
                             try:
 
                                 asyncio.run(
-                                    close_position(
-                                        position_id
-                                    )
+                                    close_position(position_id)
                                 )
-
 
                             except Exception as e:
 
@@ -391,7 +446,7 @@ def run_position_monitor():
                     send_telegram_message(
                         f"🟢 PROFIT TARGET REACHED\n\n"
                         f"Total Profit: ${total_profit:.2f}\n\n"
-                        f"Closing open trades."
+                        f"Closing all open trades."
                     )
 
 
@@ -406,7 +461,6 @@ def run_position_monitor():
                         f"${total_profit:.2f}"
                     )
 
-
                     print(
                         "Closing all open positions..."
                     )
@@ -414,9 +468,7 @@ def run_position_monitor():
 
                     for position in positions:
 
-                        position_id = position.get(
-                            "id"
-                        )
+                        position_id = position.get("id")
 
 
                         if position_id:
@@ -424,11 +476,8 @@ def run_position_monitor():
                             try:
 
                                 asyncio.run(
-                                    close_position(
-                                        position_id
-                                    )
+                                    close_position(position_id)
                                 )
-
 
                             except Exception as e:
 
@@ -441,7 +490,7 @@ def run_position_monitor():
                     send_telegram_message(
                         f"🔴 LOSS LIMIT REACHED\n\n"
                         f"Total Loss: ${total_profit:.2f}\n\n"
-                        f"Closing open trades."
+                        f"Closing all open trades."
                     )
 
 
@@ -513,9 +562,7 @@ def run_automatic_scanner():
 
                     if signal in ["BUY", "SELL"]:
 
-                        previous_signal = LAST_SIGNAL.get(
-                            pair
-                        )
+                        previous_signal = LAST_SIGNAL.get(pair)
 
 
                         # =================================
@@ -533,183 +580,4 @@ def run_automatic_scanner():
                         else:
 
                             print(
-                                f"NEW {signal} SIGNAL "
-                                f"FOR {pair}"
-                            )
-
-
-                            # =============================
-                            # PLACE AUTOMATIC TRADE
-                            # =============================
-
-                            trade_success = execute_trade(
-                                signal,
-                                pair
-                            )
-
-
-                            if trade_success:
-
-                                LAST_SIGNAL[pair] = signal
-
-
-                                print(
-                                    f"{signal} trade placed "
-                                    f"successfully for {pair}"
-                                )
-
-
-                                # =========================
-                                # SEND TELEGRAM MESSAGE
-                                # =========================
-
-                                message = format_signal(
-                                    result
-                                )
-
-
-                                message += (
-                                    "\n\n🤖 AUTOMATIC TRADE "
-                                    "PLACED SUCCESSFULLY"
-                                )
-
-
-                                send_telegram_message(
-                                    message
-                                )
-
-
-                            else:
-
-                                print(
-                                    f"Trade failed for {pair}"
-                                )
-
-
-                                message = (
-                                    f"⚠️ SIGNAL DETECTED\n\n"
-                                    f"Pair: {pair}\n"
-                                    f"Signal: {signal}\n\n"
-                                    f"Automatic trade failed."
-                                )
-
-
-                                send_telegram_message(
-                                    message
-                                )
-
-
-                    else:
-
-                        LAST_SIGNAL[pair] = None
-
-
-                    # Small delay between pairs
-
-                    time.sleep(3)
-
-
-                except Exception as e:
-
-                    print(
-                        f"Scanner error for "
-                        f"{pair}: {e}"
-                    )
-
-                    time.sleep(3)
-
-
-            print(
-                "Forex scan completed."
-            )
-
-
-        except Exception as e:
-
-            print(
-                f"Automatic scanner error: {e}"
-            )
-
-
-        print(
-            f"Waiting {SCAN_INTERVAL} seconds "
-            "before next scan..."
-        )
-
-
-        time.sleep(
-            SCAN_INTERVAL
-        )
-
-
-# =========================================================
-# START BOT
-# =========================================================
-
-if __name__ == "__main__":
-
-    print(
-        "Starting SHEFIU AI FOREX V2..."
-    )
-
-
-    # Start Render health server
-
-    health_thread = threading.Thread(
-        target=run_health_server,
-        daemon=True
-    )
-
-    health_thread.start()
-
-
-    # Start Telegram manual bot
-
-    telegram_thread = threading.Thread(
-        target=run_telegram_bot,
-        daemon=True
-    )
-
-    telegram_thread.start()
-
-
-    print(
-        "Manual Telegram bot started."
-    )
-
-
-    # Start automatic Forex scanner
-
-    scanner_thread = threading.Thread(
-        target=run_automatic_scanner,
-        daemon=True
-    )
-
-    scanner_thread.start()
-
-
-    print(
-        "Automatic Forex scanner started."
-    )
-
-
-    # Start automatic profit/loss monitor
-
-    monitor_thread = threading.Thread(
-        target=run_position_monitor,
-        daemon=True
-    )
-
-    monitor_thread.start()
-
-
-    print(
-        "Automatic profit/loss monitor started."
-    )
-
-
-    # Keep Render service running
-
-    while True:
-
-        time.sleep(60)
+                                f"
