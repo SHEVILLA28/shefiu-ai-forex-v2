@@ -104,9 +104,7 @@ async def get_connection():
                 )
 
 
-                await asyncio.sleep(
-                    RETRY_DELAY
-                )
+                await asyncio.sleep(RETRY_DELAY)
 
 
             else:
@@ -117,37 +115,32 @@ async def get_connection():
 
 
 # =========================================================
-# PLACE BUY ORDER
-# WITH STOP LOSS AND TAKE PROFIT
+# PLACE BUY ORDER WITH STOP LOSS AND TAKE PROFIT
 # =========================================================
 
 async def place_buy_order(
     symbol,
     volume,
-    stop_loss=None,
-    take_profit=None
+    stop_loss,
+    take_profit
 ):
 
     connection = await get_connection()
 
 
     print(
-        f"Placing BUY: {symbol} "
-        f"| Volume: {volume}"
-    )
-
-
-    print(
-        f"Stop Loss: {stop_loss} "
-        f"| Take Profit: {take_profit}"
+        f"Placing BUY: {symbol} | "
+        f"Volume: {volume} | "
+        f"SL: {stop_loss} | "
+        f"TP: {take_profit}"
     )
 
 
     result = await connection.create_market_buy_order(
         symbol,
         volume,
-        stop_loss,
-        take_profit
+        stop_loss=stop_loss,
+        take_profit=take_profit
     )
 
 
@@ -160,37 +153,32 @@ async def place_buy_order(
 
 
 # =========================================================
-# PLACE SELL ORDER
-# WITH STOP LOSS AND TAKE PROFIT
+# PLACE SELL ORDER WITH STOP LOSS AND TAKE PROFIT
 # =========================================================
 
 async def place_sell_order(
     symbol,
     volume,
-    stop_loss=None,
-    take_profit=None
+    stop_loss,
+    take_profit
 ):
 
     connection = await get_connection()
 
 
     print(
-        f"Placing SELL: {symbol} "
-        f"| Volume: {volume}"
-    )
-
-
-    print(
-        f"Stop Loss: {stop_loss} "
-        f"| Take Profit: {take_profit}"
+        f"Placing SELL: {symbol} | "
+        f"Volume: {volume} | "
+        f"SL: {stop_loss} | "
+        f"TP: {take_profit}"
     )
 
 
     result = await connection.create_market_sell_order(
         symbol,
         volume,
-        stop_loss,
-        take_profit
+        stop_loss=stop_loss,
+        take_profit=take_profit
     )
 
 
@@ -242,9 +230,7 @@ async def get_total_profit():
         )
 
 
-        total_profit += float(
-            profit
-        )
+        total_profit += float(profit)
 
 
     print(
@@ -298,7 +284,6 @@ async def close_all_positions():
             "No open positions to close."
         )
 
-
         return 0
 
 
@@ -309,10 +294,7 @@ async def close_all_positions():
 
         try:
 
-            position_id = position.get(
-                "id"
-            )
-
+            position_id = position.get("id")
 
             symbol = position.get(
                 "symbol",
@@ -323,8 +305,8 @@ async def close_all_positions():
             if position_id:
 
                 print(
-                    f"Closing {symbol} "
-                    f"| Position ID: {position_id}"
+                    f"Closing {symbol} | "
+                    f"Position ID: {position_id}"
                 )
 
 
