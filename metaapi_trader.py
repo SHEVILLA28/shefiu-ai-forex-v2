@@ -47,7 +47,9 @@ async def get_connection():
     print("Connecting to MetaAPI...")
 
 
-    api = MetaApi(METAAPI_TOKEN)
+    api = MetaApi(
+        METAAPI_TOKEN
+    )
 
 
     account = await api.metatrader_account_api.get_account(
@@ -93,7 +95,8 @@ async def get_connection():
         except Exception as e:
 
             print(
-                f"Connection attempt {attempt} failed: {e}"
+                f"Connection attempt "
+                f"{attempt} failed: {e}"
             )
 
 
@@ -104,7 +107,9 @@ async def get_connection():
                 )
 
 
-                await asyncio.sleep(RETRY_DELAY)
+                await asyncio.sleep(
+                    RETRY_DELAY
+                )
 
 
             else:
@@ -115,7 +120,8 @@ async def get_connection():
 
 
 # =========================================================
-# PLACE BUY ORDER WITH STOP LOSS AND TAKE PROFIT
+# PLACE BUY ORDER
+# WITH STOP LOSS AND TAKE PROFIT
 # =========================================================
 
 async def place_buy_order(
@@ -126,6 +132,15 @@ async def place_buy_order(
 ):
 
     connection = await get_connection()
+
+
+    # Convert values to float
+
+    volume = float(volume)
+
+    stop_loss = float(stop_loss)
+
+    take_profit = float(take_profit)
 
 
     print(
@@ -153,7 +168,8 @@ async def place_buy_order(
 
 
 # =========================================================
-# PLACE SELL ORDER WITH STOP LOSS AND TAKE PROFIT
+# PLACE SELL ORDER
+# WITH STOP LOSS AND TAKE PROFIT
 # =========================================================
 
 async def place_sell_order(
@@ -164,6 +180,15 @@ async def place_sell_order(
 ):
 
     connection = await get_connection()
+
+
+    # Convert values to float
+
+    volume = float(volume)
+
+    stop_loss = float(stop_loss)
+
+    take_profit = float(take_profit)
 
 
     print(
@@ -203,7 +228,8 @@ async def get_open_positions():
 
 
     print(
-        f"Open positions found: {len(positions)}"
+        f"Open positions found: "
+        f"{len(positions)}"
     )
 
 
@@ -230,7 +256,9 @@ async def get_total_profit():
         )
 
 
-        total_profit += float(profit)
+        total_profit += float(
+            profit
+        )
 
 
     print(
@@ -246,13 +274,16 @@ async def get_total_profit():
 # CLOSE ONE POSITION
 # =========================================================
 
-async def close_position(position_id):
+async def close_position(
+    position_id
+):
 
     connection = await get_connection()
 
 
     print(
-        f"Closing position: {position_id}"
+        f"Closing position: "
+        f"{position_id}"
     )
 
 
@@ -294,7 +325,10 @@ async def close_all_positions():
 
         try:
 
-            position_id = position.get("id")
+            position_id = position.get(
+                "id"
+            )
+
 
             symbol = position.get(
                 "symbol",
@@ -329,7 +363,8 @@ async def close_all_positions():
 
 
     print(
-        f"Closed positions: {closed_count}"
+        f"Closed positions: "
+        f"{closed_count}"
     )
 
 
