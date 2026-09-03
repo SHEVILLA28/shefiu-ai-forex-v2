@@ -1,4 +1,7 @@
 import os
+import time
+import threading
+
 import requests
 import pandas as pd
 
@@ -12,6 +15,23 @@ API_KEY = os.getenv("FCSAPI_API_KEY")
 BASE_URL = "https://api-v4.fcsapi.com/forex/history"
 
 MIN_CANDLES = 100
+
+
+# =========================================================
+# FCSAPI RATE LIMIT PROTECTION
+#
+# Your plan allows 3 requests per minute.
+# We wait 21 seconds between every API request.
+# This protection works for BOTH:
+# - Automatic scanner
+# - Manual Telegram analysis
+# =========================================================
+
+API_REQUEST_LOCK = threading.Lock()
+
+LAST_API_REQUEST_TIME = 0
+
+MIN_REQUEST_INTERVAL = 21
 
 
 # =========================================================
@@ -36,6 +56,45 @@ def format_symbol(pair):
 
 
 # =========================================================
+# WAIT FOR API RATE LIMIT
+# =========================================================
+
+def wait_for_rate_limit():
+
+    global LAST_API_REQUEST_TIME
+
+
+    with API_REQUEST_LOCK:
+
+        current_time = time.time()
+
+        time_since_last_request = (
+            current_time - LAST_API_REQUEST_TIME
+        )
+
+
+        if LAST_API_REQUEST_TIME > 0:
+
+            remaining_time = (
+                MIN_REQUEST_INTERVAL
+                - time_since_last_request
+            )
+
+
+            if remaining_time > 0:
+
+                print(
+                    f"Rate limit protection: waiting "
+                    f"{remaining_time:.1f} seconds..."
+                )
+
+                time.sleep(remaining_time)
+
+
+        LAST_API_REQUEST_TIME = time.time()
+
+
+# =========================================================
 # GET MARKET DATA
 # =========================================================
 
@@ -43,7 +102,9 @@ def get_market_data(pair, timeframe):
 
     if not API_KEY:
 
-        error_message = "FCSAPI_API_KEY is not configured in Render."
+        error_message = (
+            "FCSAPI_API_KEY is not configured in Render."
+        )
 
         print(error_message)
 
@@ -68,10 +129,18 @@ def get_market_data(pair, timeframe):
 
     try:
 
+        # =============================================
+        # PROTECT API FROM RATE LIMIT
+        # =============================================
+
+        wait_for_rate_limit()
+
+
         print(
             f"Requesting FCSAPI market data: "
             f"{symbol} | {period}"
         )
+
 
         response = requests.get(
             BASE_URL,
@@ -79,10 +148,12 @@ def get_market_data(pair, timeframe):
             timeout=30
         )
 
+
         print(
             f"FCSAPI status code: "
             f"{response.status_code}"
         )
+
 
         data = response.json()
 
@@ -110,7 +181,27 @@ def get_market_data(pair, timeframe):
             or "FCSAPI did not return market data."
         )
 
-        print("FCSAPI error:", data)
+
+        print(
+            "FCSAPI error:",
+            data
+        )
+
+
+        # =============================================
+        # SHOW CLEAR RATE LIMIT MESSAGE
+        # =============================================
+
+        if "rate limit" in str(
+            error_message
+        ).lower():
+
+            error_message = (
+                "FCSAPI rate limit reached. "
+                "The bot will wait before making "
+                "the next request."
+            )
+
 
         return None, str(error_message)
 
@@ -142,9 +233,11 @@ def get_market_data(pair, timeframe):
                 response_data.values()
             )
 
+
         elif isinstance(response_data, list):
 
             candles = response_data
+
 
         else:
 
@@ -155,7 +248,10 @@ def get_market_data(pair, timeframe):
 
         for candle in candles:
 
-            if not isinstance(candle, dict):
+            if not isinstance(
+                candle,
+                dict
+            ):
 
                 continue
 
@@ -253,9 +349,13 @@ def calculate_rsi(series, period=14):
 
     delta = series.diff()
 
-    gain = delta.clip(lower=0)
+    gain = delta.clip(
+        lower=0
+    )
 
-    loss = -delta.clip(upper=0)
+    loss = -delta.clip(
+        upper=0
+    )
 
 
     avg_gain = gain.rolling(
@@ -303,12 +403,14 @@ def calculate_atr(df, period=14):
 
 
     high_close = (
-        df["high"] - df["close"].shift()
+        df["high"]
+        - df["close"].shift()
     ).abs()
 
 
     low_close = (
-        df["low"] - df["close"].shift()
+        df["low"]
+        - df["close"].shift()
     ).abs()
 
 
@@ -319,7 +421,9 @@ def calculate_atr(df, period=14):
             low_close
         ],
         axis=1
-    ).max(axis=1)
+    ).max(
+        axis=1
+    )
 
 
     return true_range.rolling(
@@ -340,10 +444,16 @@ def format_price(price):
 
     if price >= 100:
 
-        return round(float(price), 3)
+        return round(
+            float(price),
+            3
+        )
 
 
-    return round(float(price), 5)
+    return round(
+        float(price),
+        5
+    )
 
 
 # =========================================================
@@ -390,15 +500,18 @@ def get_signal(pair, timeframe="5M"):
             20
         )
 
+
         df["ema_50"] = calculate_ema(
             df["close"],
             50
         )
 
+
         df["rsi"] = calculate_rsi(
             df["close"],
             14
         )
+
 
         df["atr"] = calculate_atr(
             df,
@@ -411,7 +524,10 @@ def get_signal(pair, timeframe="5M"):
         previous = df.iloc[-2]
 
 
-        close = float(latest["close"])
+        close = float(
+            latest["close"]
+        )
+
 
         previous_close = float(
             previous["close"]
@@ -422,13 +538,16 @@ def get_signal(pair, timeframe="5M"):
             latest["ema_20"]
         )
 
+
         ema_50 = float(
             latest["ema_50"]
         )
 
+
         rsi = float(
             latest["rsi"]
         )
+
 
         atr = float(
             latest["atr"]
@@ -484,9 +603,11 @@ def get_signal(pair, timeframe="5M"):
 
         trend = "BUY"
 
+
     elif ema_20 < ema_50:
 
         trend = "SELL"
+
 
     else:
 
@@ -497,11 +618,20 @@ def get_signal(pair, timeframe="5M"):
     # BUY CONDITIONS
     # =====================================================
 
-    bullish_price = close > ema_20
+    bullish_price = (
+        close > ema_20
+    )
 
-    bullish_momentum = close > previous_close
 
-    bullish_rsi = rsi >= 45 and rsi <= 70
+    bullish_momentum = (
+        close > previous_close
+    )
+
+
+    bullish_rsi = (
+        rsi >= 45
+        and rsi <= 70
+    )
 
 
     if (
@@ -513,9 +643,13 @@ def get_signal(pair, timeframe="5M"):
 
         entry = close
 
-        stop_loss = close - (atr * 1.5)
+        stop_loss = (
+            close - (atr * 1.5)
+        )
 
-        take_profit = close + (atr * 2.0)
+        take_profit = (
+            close + (atr * 2.0)
+        )
 
 
         confidence = 70
@@ -535,7 +669,9 @@ def get_signal(pair, timeframe="5M"):
             "pair": pair,
             "timeframe": timeframe,
             "signal": "BUY",
-            "entry": format_price(entry),
+            "entry": format_price(
+                entry
+            ),
             "take_profit": format_price(
                 take_profit
             ),
@@ -557,11 +693,20 @@ def get_signal(pair, timeframe="5M"):
     # SELL CONDITIONS
     # =====================================================
 
-    bearish_price = close < ema_20
+    bearish_price = (
+        close < ema_20
+    )
 
-    bearish_momentum = close < previous_close
 
-    bearish_rsi = rsi >= 30 and rsi <= 55
+    bearish_momentum = (
+        close < previous_close
+    )
+
+
+    bearish_rsi = (
+        rsi >= 30
+        and rsi <= 55
+    )
 
 
     if (
@@ -573,9 +718,13 @@ def get_signal(pair, timeframe="5M"):
 
         entry = close
 
-        stop_loss = close + (atr * 1.5)
+        stop_loss = (
+            close + (atr * 1.5)
+        )
 
-        take_profit = close - (atr * 2.0)
+        take_profit = (
+            close - (atr * 2.0)
+        )
 
 
         confidence = 70
@@ -595,7 +744,9 @@ def get_signal(pair, timeframe="5M"):
             "pair": pair,
             "timeframe": timeframe,
             "signal": "SELL",
-            "entry": format_price(entry),
+            "entry": format_price(
+                entry
+            ),
             "take_profit": format_price(
                 take_profit
             ),
@@ -625,6 +776,7 @@ def get_signal(pair, timeframe="5M"):
             "all strong enough yet."
         )
 
+
     elif trend == "SELL":
 
         reason = (
@@ -632,6 +784,7 @@ def get_signal(pair, timeframe="5M"):
             "momentum and RSI confirmation are not "
             "all strong enough yet."
         )
+
 
     else:
 
@@ -652,4 +805,4 @@ def get_signal(pair, timeframe="5M"):
         "rsi": round(rsi, 2),
         "confidence": 0,
         "reason": reason
-                }
+    }
