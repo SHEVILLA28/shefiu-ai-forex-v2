@@ -1,6 +1,7 @@
 import os
 import time
 import threading
+import asyncio
 
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
@@ -10,9 +11,15 @@ from config import BOT_TOKEN, CHAT_ID
 from telegram_bot import run_telegram_bot, format_signal
 from signals import get_signal
 
+from metaapi_trader import (
+    place_buy_order,
+    place_sell_order
+)
+
 
 # =========================================================
 # SHEFIU AI FOREX V2
+# AUTOMATIC SIGNAL + TELEGRAM + METAAPI TRADING
 # =========================================================
 
 
@@ -139,7 +146,6 @@ def send_telegram_message(message):
 
 # =========================================================
 # FOREX PAIRS
-# REDUCED TO SAVE API REQUESTS
 # =========================================================
 
 FOREX_PAIRS = [
@@ -151,22 +157,112 @@ FOREX_PAIRS = [
 
 
 # =========================================================
+# METAAPI SYMBOL CONVERSION
+# =========================================================
+
+def convert_to_mt5_symbol(pair):
+
+    return pair.replace(
+        "/",
+        ""
+    )
+
+
+# =========================================================
 # BOT SETTINGS
 # =========================================================
 
 TIMEFRAME = "5M"
 
 
-# Scan every 6 hours to save API requests
+# Scan every 6 hours
+
 SCAN_INTERVAL = 21600
+
+
+# Trade volume
+
+TRADE_VOLUME = 0.01
 
 
 # =========================================================
 # SIGNAL MEMORY
-# PREVENTS REPEATED SIGNALS
+# PREVENTS DUPLICATE TRADES
 # =========================================================
 
 LAST_SIGNAL = {}
+
+
+# =========================================================
+# AUTOMATIC TRADE EXECUTION
+# =========================================================
+
+def execute_trade(signal, pair):
+
+    symbol = convert_to_mt5_symbol(
+        pair
+    )
+
+
+    try:
+
+        if signal == "BUY":
+
+            print(
+                f"Placing BUY order for {symbol}"
+            )
+
+
+            result = asyncio.run(
+                place_buy_order(
+                    symbol,
+                    TRADE_VOLUME
+                )
+            )
+
+
+            print(
+                f"BUY order result: {result}"
+            )
+
+
+            return True
+
+
+        elif signal == "SELL":
+
+            print(
+                f"Placing SELL order for {symbol}"
+            )
+
+
+            result = asyncio.run(
+                place_sell_order(
+                    symbol,
+                    TRADE_VOLUME
+                )
+            )
+
+
+            print(
+                f"SELL order result: {result}"
+            )
+
+
+            return True
+
+
+        return False
+
+
+    except Exception as e:
+
+        print(
+            f"Trade execution error for "
+            f"{symbol}: {e}"
+        )
+
+        return False
 
 
 # =========================================================
@@ -210,10 +306,6 @@ def run_automatic_scanner():
                     )
 
 
-                    # =====================================
-                    # SHOW EVERY SCAN RESULT IN RENDER LOGS
-                    # =====================================
-
                     print(
                         f"Result for {pair}: "
                         f"{signal} | "
@@ -224,7 +316,7 @@ def run_automatic_scanner():
 
 
                     # =====================================
-                    # SEND ONLY BUY OR SELL
+                    # BUY OR SELL SIGNAL
                     # =====================================
 
                     if signal in ["BUY", "SELL"]:
@@ -235,7 +327,7 @@ def run_automatic_scanner():
 
 
                         # =================================
-                        # PREVENT DUPLICATE ALERTS
+                        # PREVENT DUPLICATE TRADES
                         # =================================
 
                         if previous_signal == signal:
@@ -248,33 +340,70 @@ def run_automatic_scanner():
 
                         else:
 
-                            message = format_signal(
-                                result
+                            print(
+                                f"NEW {signal} SIGNAL "
+                                f"FOR {pair}"
                             )
 
 
-                            success = (
-                                send_telegram_message(
-                                    message
-                                )
+                            # =============================
+                            # PLACE AUTOMATIC TRADE
+                            # =============================
+
+                            trade_success = execute_trade(
+                                signal,
+                                pair
                             )
 
 
-                            if success:
+                            if trade_success:
 
                                 LAST_SIGNAL[pair] = signal
 
+
                                 print(
-                                    f"{signal} signal sent "
-                                    f"for {pair}"
+                                    f"{signal} trade placed "
+                                    f"successfully for {pair}"
                                 )
+
+
+                                # =========================
+                                # SEND TELEGRAM MESSAGE
+                                # =========================
+
+                                message = format_signal(
+                                    result
+                                )
+
+
+                                message += (
+                                    "\n\n🤖 AUTOMATIC TRADE "
+                                    "PLACED SUCCESSFULLY"
+                                )
+
+
+                                send_telegram_message(
+                                    message
+                                )
+
 
                             else:
 
                                 print(
-                                    f"Failed to send "
-                                    f"{signal} signal "
-                                    f"for {pair}"
+                                    f"Trade failed for {pair}"
+                                )
+
+
+                                message = (
+                                    f"⚠️ SIGNAL DETECTED\n\n"
+                                    f"Pair: {pair}\n"
+                                    f"Signal: {signal}\n\n"
+                                    f"Automatic trade failed."
+                                )
+
+
+                                send_telegram_message(
+                                    message
                                 )
 
 
@@ -353,6 +482,7 @@ if __name__ == "__main__":
 
     telegram_thread.start()
 
+
     print(
         "Manual Telegram bot started."
     )
@@ -366,6 +496,7 @@ if __name__ == "__main__":
     )
 
     scanner_thread.start()
+
 
     print(
         "Automatic Forex scanner started."
