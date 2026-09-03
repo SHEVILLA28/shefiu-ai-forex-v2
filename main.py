@@ -237,10 +237,10 @@ LAST_SIGNAL = {}
 
 
 # =========================================================
-# CHECK NUMBER OF OPEN TRADES
+# CHECK IF A NEW TRADE CAN BE OPENED
 # =========================================================
 
-def can_open_new_trade():
+def check_trade_permission():
 
     try:
 
@@ -257,6 +257,10 @@ def can_open_new_trade():
         )
 
 
+        # =============================================
+        # MAXIMUM TRADE LIMIT REACHED
+        # =============================================
+
         if open_trade_count >= MAX_OPEN_TRADES:
 
             print(
@@ -264,10 +268,22 @@ def can_open_new_trade():
                 "No new trade will be opened."
             )
 
-            return False
+            return (
+                False,
+                "MAX_TRADES_REACHED",
+                open_trade_count
+            )
 
 
-        return True
+        # =============================================
+        # TRADE CAN BE OPENED
+        # =============================================
+
+        return (
+            True,
+            "TRADE_ALLOWED",
+            open_trade_count
+        )
 
 
     except Exception as e:
@@ -278,9 +294,13 @@ def can_open_new_trade():
 
 
         # Safety:
-        # Do not open a new trade if checking fails.
+        # Do not trade if position checking fails.
 
-        return False
+        return (
+            False,
+            "POSITION_CHECK_FAILED",
+            0
+        )
 
 
 # =========================================================
@@ -294,17 +314,46 @@ def execute_trade(signal, pair):
     )
 
 
-    # Check maximum open trades
+    # =============================================
+    # CHECK MAXIMUM OPEN TRADES FIRST
+    # =============================================
 
-    if not can_open_new_trade():
+    allowed, status, open_trade_count = (
+        check_trade_permission()
+    )
 
-        print(
-            f"Trade blocked for {symbol}: "
-            "maximum open trade limit reached."
-        )
 
-        return False
+    if not allowed:
 
+        if status == "MAX_TRADES_REACHED":
+
+            print(
+                f"Trade BLOCKED for {symbol}: "
+                f"maximum {MAX_OPEN_TRADES} open trades reached."
+            )
+
+            return (
+                False,
+                "MAX_TRADES_REACHED"
+            )
+
+
+        elif status == "POSITION_CHECK_FAILED":
+
+            print(
+                f"Trade BLOCKED for {symbol}: "
+                "unable to safely check open positions."
+            )
+
+            return (
+                False,
+                "POSITION_CHECK_FAILED"
+            )
+
+
+    # =============================================
+    # PLACE BUY ORDER
+    # =============================================
 
     try:
 
@@ -327,8 +376,16 @@ def execute_trade(signal, pair):
                 f"BUY order result: {result}"
             )
 
-            return True
 
+            return (
+                True,
+                "TRADE_PLACED"
+            )
+
+
+        # =========================================
+        # PLACE SELL ORDER
+        # =========================================
 
         elif signal == "SELL":
 
@@ -349,10 +406,17 @@ def execute_trade(signal, pair):
                 f"SELL order result: {result}"
             )
 
-            return True
+
+            return (
+                True,
+                "TRADE_PLACED"
+            )
 
 
-        return False
+        return (
+            False,
+            "INVALID_SIGNAL"
+        )
 
 
     except Exception as e:
@@ -362,7 +426,11 @@ def execute_trade(signal, pair):
             f"{symbol}: {e}"
         )
 
-        return False
+
+        return (
+            False,
+            "TRADE_FAILED"
+        )
 
 
 # =========================================================
@@ -370,6 +438,11 @@ def execute_trade(signal, pair):
 # =========================================================
 
 def close_all_positions(positions):
+
+    print(
+        f"Closing {len(positions)} open position(s)..."
+    )
+
 
     for position in positions:
 
@@ -387,10 +460,15 @@ def close_all_positions(positions):
                 )
 
 
-                asyncio.run(
+                result = asyncio.run(
                     close_position(
                         position_id
                     )
+                )
+
+
+                print(
+                    f"Close result: {result}"
                 )
 
 
@@ -454,7 +532,7 @@ def run_position_monitor():
 
 
                 # =====================================
-                # PROFIT TARGET
+                # PROFIT TARGET REACHED
                 # =====================================
 
                 if total_profit >= TOTAL_PROFIT_TARGET:
@@ -462,11 +540,6 @@ def run_position_monitor():
                     print(
                         f"PROFIT TARGET REACHED: "
                         f"${total_profit:.2f}"
-                    )
-
-
-                    print(
-                        "Closing all open positions..."
                     )
 
 
@@ -479,7 +552,7 @@ def run_position_monitor():
                         f"🟢 PROFIT TARGET REACHED\n\n"
                         f"Total Profit: "
                         f"${total_profit:.2f}\n\n"
-                        f"Closing all open trades."
+                        f"🤖 Closing all open trades."
                     )
 
 
@@ -489,7 +562,7 @@ def run_position_monitor():
 
 
                 # =====================================
-                # LOSS LIMIT
+                # LOSS LIMIT REACHED
                 # =====================================
 
                 elif total_profit <= TOTAL_LOSS_LIMIT:
@@ -497,11 +570,6 @@ def run_position_monitor():
                     print(
                         f"LOSS LIMIT REACHED: "
                         f"${total_profit:.2f}"
-                    )
-
-
-                    print(
-                        "Closing all open positions..."
                     )
 
 
@@ -514,7 +582,7 @@ def run_position_monitor():
                         f"🔴 LOSS LIMIT REACHED\n\n"
                         f"Total Loss: "
                         f"${total_profit:.2f}\n\n"
-                        f"Closing all open trades."
+                        f"🤖 Closing all open trades."
                     )
 
 
@@ -597,7 +665,7 @@ def run_automatic_scanner():
 
 
                         # =================================
-                        # PREVENT DUPLICATE TRADES
+                        # PREVENT DUPLICATE SIGNAL
                         # =================================
 
                         if previous_signal == signal:
@@ -617,14 +685,20 @@ def run_automatic_scanner():
 
 
                             # =============================
-                            # PLACE AUTOMATIC TRADE
+                            # EXECUTE AUTOMATIC TRADE
                             # =============================
 
-                            trade_success = execute_trade(
-                                signal,
-                                pair
+                            trade_success, trade_status = (
+                                execute_trade(
+                                    signal,
+                                    pair
+                                )
                             )
 
+
+                            # =============================
+                            # TRADE SUCCESS
+                            # =============================
 
                             if trade_success:
 
@@ -636,10 +710,6 @@ def run_automatic_scanner():
                                     f"successfully for {pair}"
                                 )
 
-
-                                # =========================
-                                # TELEGRAM SUCCESS MESSAGE
-                                # =========================
 
                                 message = format_signal(
                                     result
@@ -657,22 +727,85 @@ def run_automatic_scanner():
                                 )
 
 
-                            else:
+                            # =============================
+                            # MAXIMUM TRADES BLOCKED
+                            # =============================
+
+                            elif (
+                                trade_status
+                                == "MAX_TRADES_REACHED"
+                            ):
 
                                 print(
-                                    f"Trade was not placed "
-                                    f"for {pair}"
+                                    f"Trade blocked for {pair}: "
+                                    "maximum trade limit reached."
                                 )
 
 
-                                # Do not mark as successful
+                                message = format_signal(
+                                    result
+                                )
+
+
+                                message += (
+                                    "\n\n🛑 TRADE BLOCKED\n\n"
+                                    f"Reason: Maximum "
+                                    f"{MAX_OPEN_TRADES} open trades "
+                                    f"already reached.\n\n"
+                                    "🤖 Safety protection is active."
+                                )
+
+
+                                send_telegram_message(
+                                    message
+                                )
+
+
+                            # =============================
+                            # POSITION CHECK FAILED
+                            # =============================
+
+                            elif (
+                                trade_status
+                                == "POSITION_CHECK_FAILED"
+                            ):
 
                                 message = (
                                     f"⚠️ SIGNAL DETECTED\n\n"
                                     f"Pair: {pair}\n"
                                     f"Signal: {signal}\n\n"
-                                    f"Automatic trade was blocked "
-                                    f"or failed."
+                                    "🛑 TRADE BLOCKED\n\n"
+                                    "Reason: Unable to safely check "
+                                    "open positions."
+                                )
+
+
+                                send_telegram_message(
+                                    message
+                                )
+
+
+                            # =============================
+                            # ACTUAL TRADE FAILURE
+                            # =============================
+
+                            else:
+
+                                print(
+                                    f"Trade FAILED for {pair}"
+                                )
+
+
+                                message = format_signal(
+                                    result
+                                )
+
+
+                                message += (
+                                    "\n\n❌ AUTOMATIC TRADE FAILED\n\n"
+                                    "The signal was detected, but "
+                                    "the trade could not be placed. "
+                                    "Check Render logs for details."
                                 )
 
 
