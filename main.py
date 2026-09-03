@@ -226,6 +226,19 @@ def run_automatic_scanner():
 
 
                     # =====================================
+                    # SHOW EVERY SCAN RESULT IN RENDER LOGS
+                    # =====================================
+
+                    print(
+                        f"Result for {pair}: "
+                        f"{signal} | "
+                        f"Trend: {result.get('trend')} | "
+                        f"RSI: {result.get('rsi')} | "
+                        f"Reason: {result.get('reason')}"
+                    )
+
+
+                    # =====================================
                     # SEND ONLY BUY OR SELL
                     # =====================================
 
@@ -271,6 +284,14 @@ def run_automatic_scanner():
 
                                 print(
                                     f"{signal} signal sent "
+                                    f"for {pair}"
+                                )
+
+                            else:
+
+                                print(
+                                    f"Failed to send "
+                                    f"{signal} signal "
                                     f"for {pair}"
                                 )
 
