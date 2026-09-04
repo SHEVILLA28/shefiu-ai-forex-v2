@@ -1,6 +1,7 @@
 import os
 import time
 import threading
+from datetime import datetime, timezone
 
 import requests
 import pandas as pd
@@ -27,10 +28,6 @@ API_REQUEST_LOCK = threading.Lock()
 
 LAST_API_REQUEST_TIME = 0
 
-# Twelve Data free API can have strict per-minute limits.
-# 10 seconds between requests keeps requests safely below
-# the limit.
-
 MIN_REQUEST_INTERVAL = 10
 
 
@@ -48,11 +45,29 @@ RATE_LIMIT_WAIT_TIME = 60
 # =========================================================
 
 TIMEFRAME_MAP = {
+
     "1M": "1min",
+
     "2M": "1min",
+
     "3M": "1min",
+
     "5M": "5min",
+
+    "15M": "15min",
+
+    "30M": "30min",
+
+    "1H": "1h",
+
 }
+
+
+# =========================================================
+# HIGHER TIMEFRAME SETTINGS
+# =========================================================
+
+HIGHER_TIMEFRAME = "15M"
 
 
 # =========================================================
@@ -62,6 +77,43 @@ TIMEFRAME_MAP = {
 def format_symbol(pair):
 
     return pair.upper().replace(" ", "")
+
+
+# =========================================================
+# CHECK FOREX MARKET STATUS
+# =========================================================
+
+def is_market_open():
+
+    now = datetime.now(timezone.utc)
+
+    weekday = now.weekday()
+
+    hour = now.hour
+
+
+    # Saturday
+
+    if weekday == 5:
+
+        return False
+
+
+    # Sunday before Forex market normally opens
+
+    if weekday == 6 and hour < 22:
+
+        return False
+
+
+    # Friday after market normally closes
+
+    if weekday == 4 and hour >= 22:
+
+        return False
+
+
+    return True
 
 
 # =========================================================
@@ -76,25 +128,33 @@ def wait_for_rate_limit():
 
         current_time = time.time()
 
+
         if LAST_API_REQUEST_TIME > 0:
 
             time_since_last_request = (
-                current_time - LAST_API_REQUEST_TIME
+                current_time
+                - LAST_API_REQUEST_TIME
             )
+
 
             remaining_time = (
                 MIN_REQUEST_INTERVAL
                 - time_since_last_request
             )
 
+
             if remaining_time > 0:
 
                 print(
+
                     f"Rate limit protection: waiting "
                     f"{remaining_time:.1f} seconds..."
+
                 )
 
+
                 time.sleep(remaining_time)
+
 
         LAST_API_REQUEST_TIME = time.time()
 
@@ -105,10 +165,14 @@ def wait_for_rate_limit():
 
 def get_market_data(pair, timeframe):
 
+
     if not API_KEY:
 
         error_message = (
-            "TWELVE_DATA_API_KEY is not configured in Render."
+
+            "TWELVE_DATA_API_KEY is not configured "
+            "in Render."
+
         )
 
         print(error_message)
@@ -121,46 +185,63 @@ def get_market_data(pair, timeframe):
         "5min"
     )
 
+
     symbol = format_symbol(pair)
 
 
     params = {
+
         "symbol": symbol,
+
         "interval": interval,
+
         "outputsize": 150,
+
         "apikey": API_KEY,
+
         "format": "JSON",
+
     }
 
 
     # =====================================================
-    # REQUEST WITH RATE LIMIT RETRY
+    # REQUEST WITH RETRY
     # =====================================================
 
     for attempt in range(
         MAX_RATE_LIMIT_RETRIES + 1
     ):
 
+
         try:
 
             wait_for_rate_limit()
 
+
             print(
-                f"Requesting Twelve Data market data: "
+
+                f"Requesting market data: "
                 f"{symbol} | {interval}"
+
             )
 
 
             response = requests.get(
+
                 BASE_URL,
+
                 params=params,
+
                 timeout=30
+
             )
 
 
             print(
-                f"Twelve Data status code: "
+
+                f"Twelve Data status: "
                 f"{response.status_code}"
+
             )
 
 
@@ -168,22 +249,23 @@ def get_market_data(pair, timeframe):
 
                 data = response.json()
 
+
             except Exception:
 
-                error_message = (
-                    f"Twelve Data returned invalid response: "
-                    f"{response.text}"
+                return None, (
+
+                    "Twelve Data returned "
+                    "an invalid response."
+
                 )
-
-                print(error_message)
-
-                return None, error_message
 
 
         except Exception as e:
 
             error_message = (
-                f"Twelve Data market request error: {e}"
+
+                f"Market request error: {e}"
+
             )
 
             print(error_message)
@@ -192,44 +274,41 @@ def get_market_data(pair, timeframe):
 
 
         # =================================================
-        # HANDLE HTTP 429 RATE LIMIT
+        # RATE LIMIT
         # =================================================
 
         if response.status_code == 429:
 
+
             error_message = (
+
                 data.get("message")
-                or "Twelve Data API rate limit reached."
+
+                or "Twelve Data rate limit reached."
+
             )
 
-
-            print(
-                "===================================="
-            )
 
             print(
                 "TWELVE DATA RATE LIMIT REACHED"
             )
 
-            print(
-                error_message
-            )
-
-            print(
-                "===================================="
-            )
-
 
             if attempt < MAX_RATE_LIMIT_RETRIES:
 
+
                 print(
-                    f"Waiting {RATE_LIMIT_WAIT_TIME} "
-                    f"seconds before retrying..."
+
+                    f"Waiting "
+                    f"{RATE_LIMIT_WAIT_TIME} seconds..."
+
                 )
+
 
                 time.sleep(
                     RATE_LIMIT_WAIT_TIME
                 )
+
 
                 continue
 
@@ -238,14 +317,18 @@ def get_market_data(pair, timeframe):
 
 
         # =================================================
-        # CHECK API ERROR RESPONSE
+        # API ERROR
         # =================================================
 
         if data.get("status") == "error":
 
+
             error_message = (
+
                 data.get("message")
-                or "Twelve Data did not return market data."
+
+                or "Twelve Data did not return data."
+
             )
 
 
@@ -258,10 +341,6 @@ def get_market_data(pair, timeframe):
             return None, str(error_message)
 
 
-        # =================================================
-        # SUCCESS
-        # =================================================
-
         break
 
 
@@ -270,31 +349,27 @@ def get_market_data(pair, timeframe):
 
     if not values:
 
-        error_message = (
+        return None, (
+
             data.get("message")
-            or "Twelve Data returned no market candles."
+
+            or "No market candles returned."
+
         )
-
-
-        print(
-            "Twelve Data response:",
-            data
-        )
-
-
-        return None, error_message
 
 
     # =====================================================
-    # PROCESS MARKET DATA
+    # PROCESS DATA
     # =====================================================
 
     try:
+
 
         rows = []
 
 
         for candle in values:
+
 
             if not isinstance(candle, dict):
 
@@ -303,25 +378,15 @@ def get_market_data(pair, timeframe):
 
             rows.append({
 
-                "datetime": candle.get(
-                    "datetime"
-                ),
+                "datetime": candle.get("datetime"),
 
-                "open": candle.get(
-                    "open"
-                ),
+                "open": candle.get("open"),
 
-                "high": candle.get(
-                    "high"
-                ),
+                "high": candle.get("high"),
 
-                "low": candle.get(
-                    "low"
-                ),
+                "low": candle.get("low"),
 
-                "close": candle.get(
-                    "close"
-                ),
+                "close": candle.get("close"),
 
             })
 
@@ -331,29 +396,37 @@ def get_market_data(pair, timeframe):
 
         if df.empty:
 
-            return None, (
-                "Twelve Data returned empty candle data."
-            )
+            return None, "Market data is empty."
 
 
         df["datetime"] = pd.to_datetime(
+
             df["datetime"],
+
             errors="coerce"
+
         )
 
 
         for column in [
 
             "open",
+
             "high",
+
             "low",
+
             "close"
 
         ]:
 
+
             df[column] = pd.to_numeric(
+
                 df[column],
+
                 errors="coerce"
+
             )
 
 
@@ -362,9 +435,13 @@ def get_market_data(pair, timeframe):
             subset=[
 
                 "datetime",
+
                 "open",
+
                 "high",
+
                 "low",
+
                 "close"
 
             ]
@@ -373,15 +450,21 @@ def get_market_data(pair, timeframe):
 
 
         df = df.sort_values(
+
             "datetime"
+
         ).reset_index(
+
             drop=True
+
         )
 
 
         print(
-            f"Twelve Data candles received: "
+
+            f"Candles received: "
             f"{len(df)}"
+
         )
 
 
@@ -389,9 +472,9 @@ def get_market_data(pair, timeframe):
 
             return None, (
 
-                f"Not enough market candles. "
+                f"Not enough candles. "
                 f"Received {len(df)}, "
-                f"need at least {MIN_CANDLES}."
+                f"need {MIN_CANDLES}."
 
             )
 
@@ -401,15 +484,11 @@ def get_market_data(pair, timeframe):
 
     except Exception as e:
 
-        error_message = (
-            f"Twelve Data data processing error: {e}"
+        return None, (
+
+            f"Data processing error: {e}"
+
         )
-
-
-        print(error_message)
-
-
-        return None, error_message
 
 
 # =========================================================
@@ -418,15 +497,14 @@ def get_market_data(pair, timeframe):
 
 def calculate_rsi(series, period=14):
 
+
     delta = series.diff()
 
-    gain = delta.clip(
-        lower=0
-    )
 
-    loss = -delta.clip(
-        upper=0
-    )
+    gain = delta.clip(lower=0)
+
+
+    loss = -delta.clip(upper=0)
 
 
     avg_gain = gain.rolling(
@@ -446,7 +524,9 @@ def calculate_rsi(series, period=14):
 
 
     return 100 - (
+
         100 / (1 + rs)
+
     )
 
 
@@ -456,9 +536,13 @@ def calculate_rsi(series, period=14):
 
 def calculate_ema(series, period):
 
+
     return series.ewm(
+
         span=period,
+
         adjust=False
+
     ).mean()
 
 
@@ -468,29 +552,41 @@ def calculate_ema(series, period):
 
 def calculate_atr(df, period=14):
 
+
     high_low = (
-        df["high"] - df["low"]
+
+        df["high"]
+        - df["low"]
+
     )
 
 
     high_close = (
+
         df["high"]
         - df["close"].shift()
+
     ).abs()
 
 
     low_close = (
+
         df["low"]
         - df["close"].shift()
+
     ).abs()
 
 
     true_range = pd.concat(
 
         [
+
             high_low,
+
             high_close,
+
             low_close
+
         ],
 
         axis=1
@@ -504,19 +600,124 @@ def calculate_atr(df, period=14):
 
 
 # =========================================================
+# GET TREND FROM DATAFRAME
+# =========================================================
+
+def get_trend_from_df(df):
+
+
+    df["ema_20"] = calculate_ema(
+
+        df["close"],
+
+        20
+
+    )
+
+
+    df["ema_50"] = calculate_ema(
+
+        df["close"],
+
+        50
+
+    )
+
+
+    latest = df.iloc[-1]
+
+
+    ema_20 = float(
+        latest["ema_20"]
+    )
+
+
+    ema_50 = float(
+        latest["ema_50"]
+    )
+
+
+    if ema_20 > ema_50:
+
+        return "BUY"
+
+
+    elif ema_20 < ema_50:
+
+        return "SELL"
+
+
+    return "WAIT"
+
+
+# =========================================================
+# GET HIGHER TIMEFRAME TREND
+# =========================================================
+
+def get_higher_timeframe_trend(pair):
+
+
+    df, error_message = get_market_data(
+
+        pair,
+
+        HIGHER_TIMEFRAME
+
+    )
+
+
+    if df is None:
+
+        print(
+
+            f"Higher timeframe check failed "
+            f"for {pair}: {error_message}"
+
+        )
+
+
+        return "UNKNOWN"
+
+
+    try:
+
+        trend = get_trend_from_df(df)
+
+
+        print(
+
+            f"Higher timeframe trend for "
+            f"{pair}: {trend}"
+
+        )
+
+
+        return trend
+
+
+    except Exception as e:
+
+        print(
+
+            f"Higher timeframe trend error: {e}"
+
+        )
+
+
+        return "UNKNOWN"
+
+
+# =========================================================
 # CANDLESTICK PATTERN DETECTION
 # =========================================================
 
 def get_candlestick_signal(df):
 
+
     latest = df.iloc[-1]
 
     previous = df.iloc[-2]
 
-
-    # =====================================================
-    # CURRENT CANDLE
-    # =====================================================
 
     current_open = float(
         latest["open"]
@@ -535,10 +736,6 @@ def get_candlestick_signal(df):
     )
 
 
-    # =====================================================
-    # PREVIOUS CANDLE
-    # =====================================================
-
     previous_open = float(
         previous["open"]
     )
@@ -548,17 +745,19 @@ def get_candlestick_signal(df):
     )
 
 
-    # =====================================================
-    # CANDLE BODY AND WICKS
-    # =====================================================
-
     body = abs(
-        current_close - current_open
+
+        current_close
+        - current_open
+
     )
 
 
     candle_range = (
-        current_high - current_low
+
+        current_high
+        - current_low
+
     )
 
 
@@ -567,18 +766,26 @@ def get_candlestick_signal(df):
         return "NONE"
 
 
-    lower_wick = min(
+    lower_wick = (
 
-        current_open,
-        current_close
+        min(
+            current_open,
+            current_close
+        )
 
-    ) - current_low
+        - current_low
+
+    )
 
 
-    upper_wick = current_high - max(
+    upper_wick = (
 
-        current_open,
-        current_close
+        current_high
+
+        - max(
+            current_open,
+            current_close
+        )
 
     )
 
@@ -683,6 +890,7 @@ def calculate_support_resistance(
     lookback=50
 ):
 
+
     recent_data = df.tail(
         lookback
     )
@@ -690,12 +898,16 @@ def calculate_support_resistance(
 
     support = recent_data["low"].min()
 
+
     resistance = recent_data["high"].max()
 
 
     return (
+
         float(support),
+
         float(resistance)
+
     )
 
 
@@ -704,6 +916,7 @@ def calculate_support_resistance(
 # =========================================================
 
 def format_price(price):
+
 
     if pd.isna(price):
 
@@ -725,6 +938,72 @@ def format_price(price):
 
 
 # =========================================================
+# CREATE NO TRADE RESULT
+# =========================================================
+
+def create_no_trade_result(
+    pair,
+    timeframe,
+    reason,
+    news_info=None,
+    support="N/A",
+    resistance="N/A",
+    trend="WAIT",
+    rsi="N/A",
+    candlestick="N/A",
+    higher_trend="N/A"
+):
+
+
+    if news_info is None:
+
+        news_info = {}
+
+
+    return {
+
+        "pair": pair,
+
+        "timeframe": timeframe,
+
+        "signal": "NO TRADE",
+
+        "entry": "N/A",
+
+        "take_profit": "N/A",
+
+        "stop_loss": "N/A",
+
+        "support": support,
+
+        "resistance": resistance,
+
+        "trend": trend,
+
+        "higher_trend": higher_trend,
+
+        "rsi": rsi,
+
+        "candlestick": candlestick,
+
+        "confidence": 0,
+
+        "news_status": news_info.get(
+            "status",
+            "UNKNOWN"
+        ),
+
+        "news_message": news_info.get(
+            "message",
+            "Economic news status unavailable."
+        ),
+
+        "reason": reason
+
+    }
+
+
+# =========================================================
 # GET SIGNAL
 # =========================================================
 
@@ -735,10 +1014,35 @@ def get_signal(
 
 
     # =====================================================
+    # MARKET CLOSED PROTECTION
+    # =====================================================
+
+    if not is_market_open():
+
+        print(
+            f"Forex market is closed for {pair}."
+        )
+
+
+        return create_no_trade_result(
+
+            pair,
+
+            timeframe,
+
+            "Forex market is currently closed. "
+            "Automatic trading is paused until "
+            "the market reopens."
+
+        )
+
+
+    # =====================================================
     # ECONOMIC NEWS FILTER
     # =====================================================
 
     try:
+
 
         news_info = get_news_status(
             pair
@@ -746,6 +1050,7 @@ def get_signal(
 
 
     except Exception as e:
+
 
         print(
             f"News filter check failed: {e}"
@@ -761,11 +1066,7 @@ def get_signal(
             "message": (
                 "Economic news filter could not "
                 "be checked."
-            ),
-
-            "currency": None,
-
-            "event": None
+            )
 
         }
 
@@ -779,110 +1080,60 @@ def get_signal(
         False
     ):
 
+
         print(
             f"Trading paused for {pair}: "
-            f"high-impact news detected."
+            f"high-impact news."
         )
 
 
-        return {
+        return create_no_trade_result(
 
-            "pair": pair,
+            pair,
 
-            "timeframe": timeframe,
+            timeframe,
 
-            "signal": "NO TRADE",
-
-            "entry": "N/A",
-
-            "take_profit": "N/A",
-
-            "stop_loss": "N/A",
-
-            "support": "N/A",
-
-            "resistance": "N/A",
-
-            "trend": "WAIT",
-
-            "rsi": "N/A",
-
-            "candlestick": "N/A",
-
-            "confidence": 0,
-
-            "news_status": news_info.get(
-                "status",
-                "BLOCKED"
-            ),
-
-            "news_message": news_info.get(
+            news_info.get(
                 "message",
                 "High-impact economic news detected."
             ),
 
-            "reason": news_info.get(
-                "message",
-                "Trading temporarily paused."
-            )
+            news_info=news_info
 
-        }
+        )
 
 
     # =====================================================
-    # GET MARKET DATA
+    # GET MAIN TIMEFRAME DATA
     # =====================================================
 
     df, error_message = get_market_data(
+
         pair,
+
         timeframe
+
     )
 
 
     if df is None:
 
-        return {
 
-            "pair": pair,
+        return create_no_trade_result(
 
-            "timeframe": timeframe,
+            pair,
 
-            "signal": "NO TRADE",
+            timeframe,
 
-            "entry": "N/A",
+            error_message,
 
-            "take_profit": "N/A",
+            news_info=news_info
 
-            "stop_loss": "N/A",
-
-            "support": "N/A",
-
-            "resistance": "N/A",
-
-            "trend": "WAIT",
-
-            "rsi": "N/A",
-
-            "candlestick": "N/A",
-
-            "confidence": 0,
-
-            "news_status": news_info.get(
-                "status",
-                "UNKNOWN"
-            ),
-
-            "news_message": news_info.get(
-                "message",
-                "Economic news status unavailable."
-            ),
-
-            "reason": error_message
-
-        }
+        )
 
 
     try:
+
 
         # =================================================
         # INDICATORS
@@ -913,7 +1164,7 @@ def get_signal(
 
 
         # =================================================
-        # SUPPORT AND RESISTANCE
+        # SUPPORT / RESISTANCE
         # =================================================
 
         support, resistance = (
@@ -925,7 +1176,7 @@ def get_signal(
 
 
         # =================================================
-        # CANDLESTICK PATTERN
+        # CANDLESTICK
         # =================================================
 
         candlestick = get_candlestick_signal(
@@ -970,47 +1221,18 @@ def get_signal(
 
     except Exception as e:
 
-        return {
 
-            "pair": pair,
+        return create_no_trade_result(
 
-            "timeframe": timeframe,
+            pair,
 
-            "signal": "NO TRADE",
+            timeframe,
 
-            "entry": "N/A",
+            f"Indicator calculation error: {e}",
 
-            "take_profit": "N/A",
+            news_info=news_info
 
-            "stop_loss": "N/A",
-
-            "support": "N/A",
-
-            "resistance": "N/A",
-
-            "trend": "WAIT",
-
-            "rsi": "N/A",
-
-            "candlestick": "N/A",
-
-            "confidence": 0,
-
-            "news_status": news_info.get(
-                "status",
-                "UNKNOWN"
-            ),
-
-            "news_message": news_info.get(
-                "message",
-                "Economic news status unavailable."
-            ),
-
-            "reason": (
-                f"Indicator calculation error: {e}"
-            )
-
-        }
+        )
 
 
     # =====================================================
@@ -1019,48 +1241,25 @@ def get_signal(
 
     if pd.isna(rsi) or pd.isna(atr):
 
-        return {
 
-            "pair": pair,
+        return create_no_trade_result(
 
-            "timeframe": timeframe,
+            pair,
 
-            "signal": "NO TRADE",
+            timeframe,
 
-            "entry": "N/A",
+            "Not enough data to calculate "
+            "technical indicators.",
 
-            "take_profit": "N/A",
+            news_info=news_info,
 
-            "stop_loss": "N/A",
+            support=format_price(support),
 
-            "support": format_price(support),
+            resistance=format_price(resistance),
 
-            "resistance": format_price(resistance),
+            candlestick=candlestick
 
-            "trend": "WAIT",
-
-            "rsi": "N/A",
-
-            "candlestick": candlestick,
-
-            "confidence": 0,
-
-            "news_status": news_info.get(
-                "status",
-                "UNKNOWN"
-            ),
-
-            "news_message": news_info.get(
-                "message",
-                "Economic news status unavailable."
-            ),
-
-            "reason": (
-                "Not enough data to calculate "
-                "technical indicators."
-            )
-
-        }
+        )
 
 
     # =====================================================
@@ -1083,6 +1282,81 @@ def get_signal(
 
 
     # =====================================================
+    # HIGHER TIMEFRAME CONFIRMATION
+    # =====================================================
+
+    higher_trend = get_higher_timeframe_trend(
+        pair
+    )
+
+
+    # =====================================================
+    # HIGHER TIMEFRAME MUST AGREE
+    # =====================================================
+
+    if higher_trend == "UNKNOWN":
+
+
+        return create_no_trade_result(
+
+            pair,
+
+            timeframe,
+
+            "Higher timeframe confirmation "
+            "could not be checked. Waiting for "
+            "safer market confirmation.",
+
+            news_info=news_info,
+
+            support=format_price(support),
+
+            resistance=format_price(resistance),
+
+            trend=trend,
+
+            rsi=round(rsi, 2),
+
+            candlestick=candlestick,
+
+            higher_trend=higher_trend
+
+        )
+
+
+    if trend != "WAIT" and trend != higher_trend:
+
+
+        return create_no_trade_result(
+
+            pair,
+
+            timeframe,
+
+            f"Timeframe conflict detected. "
+            f"5M trend is {trend}, but "
+            f"{HIGHER_TIMEFRAME} trend is "
+            f"{higher_trend}. Waiting for both "
+            f"timeframes to agree.",
+
+            news_info=news_info,
+
+            support=format_price(support),
+
+            resistance=format_price(resistance),
+
+            trend=trend,
+
+            rsi=round(rsi, 2),
+
+            candlestick=candlestick,
+
+            higher_trend=higher_trend
+
+        )
+
+
+    # =====================================================
     # SUPPORT / RESISTANCE DISTANCE
     # =====================================================
 
@@ -1097,7 +1371,7 @@ def get_signal(
 
 
     # =====================================================
-    # CANDLESTICK CONFIRMATION
+    # CANDLE CONFIRMATION
     # =====================================================
 
     bullish_candle = (
@@ -1122,9 +1396,7 @@ def get_signal(
     # BUY CONDITIONS
     # =====================================================
 
-    bullish_price = (
-        close > ema_20
-    )
+    bullish_price = close > ema_20
 
 
     bullish_momentum = (
@@ -1156,6 +1428,8 @@ def get_signal(
 
         trend == "BUY"
 
+        and higher_trend == "BUY"
+
         and bullish_price
 
         and bullish_momentum
@@ -1167,6 +1441,7 @@ def get_signal(
         and bullish_candle
 
     ):
+
 
         entry = close
 
@@ -1184,9 +1459,14 @@ def get_signal(
         confidence = 70
 
 
+        # Higher timeframe confirmation
+
+        confidence += 10
+
+
         if rsi >= 50:
 
-            confidence += 10
+            confidence += 5
 
 
         if rsi >= 55:
@@ -1194,7 +1474,7 @@ def get_signal(
             confidence += 5
 
 
-        confidence += 10
+        confidence += 5
 
 
         confidence = min(
@@ -1229,7 +1509,9 @@ def get_signal(
                 resistance
             ),
 
-            "trend": "BUY",
+            "trend": trend,
+
+            "higher_trend": higher_trend,
 
             "rsi": round(rsi, 2),
 
@@ -1248,10 +1530,13 @@ def get_signal(
             ),
 
             "reason": (
-                "BUY confirmed by EMA trend, "
+
+                "STRONG BUY confirmed by 5M and "
+                f"{HIGHER_TIMEFRAME} EMA trend, "
                 "price momentum, RSI, support and "
                 "resistance safety, and bullish "
-                f"candlestick pattern: {candlestick}."
+                f"candlestick: {candlestick}."
+
             )
 
         }
@@ -1261,9 +1546,7 @@ def get_signal(
     # SELL CONDITIONS
     # =====================================================
 
-    bearish_price = (
-        close < ema_20
-    )
+    bearish_price = close < ema_20
 
 
     bearish_momentum = (
@@ -1295,6 +1578,8 @@ def get_signal(
 
         trend == "SELL"
 
+        and higher_trend == "SELL"
+
         and bearish_price
 
         and bearish_momentum
@@ -1306,6 +1591,7 @@ def get_signal(
         and bearish_candle
 
     ):
+
 
         entry = close
 
@@ -1323,9 +1609,14 @@ def get_signal(
         confidence = 70
 
 
+        # Higher timeframe confirmation
+
+        confidence += 10
+
+
         if rsi <= 50:
 
-            confidence += 10
+            confidence += 5
 
 
         if rsi <= 45:
@@ -1333,7 +1624,7 @@ def get_signal(
             confidence += 5
 
 
-        confidence += 10
+        confidence += 5
 
 
         confidence = min(
@@ -1368,7 +1659,9 @@ def get_signal(
                 resistance
             ),
 
-            "trend": "SELL",
+            "trend": trend,
+
+            "higher_trend": higher_trend,
 
             "rsi": round(rsi, 2),
 
@@ -1387,10 +1680,13 @@ def get_signal(
             ),
 
             "reason": (
-                "SELL confirmed by EMA trend, "
+
+                "STRONG SELL confirmed by 5M and "
+                f"{HIGHER_TIMEFRAME} EMA trend, "
                 "price momentum, RSI, support and "
                 "resistance safety, and bearish "
-                f"candlestick pattern: {candlestick}."
+                f"candlestick: {candlestick}."
+
             )
 
         }
@@ -1402,63 +1698,82 @@ def get_signal(
 
     if trend == "BUY" and not buy_safe_from_resistance:
 
+
         reason = (
-            "BUY setup detected, but price is too "
-            "close to resistance. Waiting for a safer "
-            "entry."
+
+            "BUY trend detected, but price is too "
+            "close to resistance. Waiting for a "
+            "safer entry."
+
         )
 
 
     elif trend == "SELL" and not sell_safe_from_support:
 
+
         reason = (
-            "SELL setup detected, but price is too "
-            "close to support. Waiting for a safer "
-            "entry."
+
+            "SELL trend detected, but price is too "
+            "close to support. Waiting for a "
+            "safer entry."
+
         )
 
 
     elif trend == "BUY" and not bullish_candle:
 
+
         reason = (
-            "Bullish trend detected, but there is no "
-            "strong bullish candlestick confirmation yet. "
-            f"Current candle pattern: {candlestick}."
+
+            "Bullish trend confirmed, but no strong "
+            "bullish candlestick confirmation yet. "
+            f"Pattern: {candlestick}."
+
         )
 
 
     elif trend == "SELL" and not bearish_candle:
 
+
         reason = (
-            "Bearish trend detected, but there is no "
-            "strong bearish candlestick confirmation yet. "
-            f"Current candle pattern: {candlestick}."
+
+            "Bearish trend confirmed, but no strong "
+            "bearish candlestick confirmation yet. "
+            f"Pattern: {candlestick}."
+
         )
 
 
     elif trend == "BUY":
 
+
         reason = (
-            "Bullish trend detected, but price, "
-            "momentum and RSI confirmation are not "
-            "all strong enough yet."
+
+            "Bullish trend exists, but not all BUY "
+            "conditions are strong enough yet."
+
         )
 
 
     elif trend == "SELL":
 
+
         reason = (
-            "Bearish trend detected, but price, "
-            "momentum and RSI confirmation are not "
-            "all strong enough yet."
+
+            "Bearish trend exists, but not all SELL "
+            "conditions are strong enough yet."
+
         )
 
 
     else:
 
+
         reason = (
+
             "Market direction is unclear. "
             "Waiting for a stronger setup."
+
         )
 
 
@@ -1466,46 +1781,26 @@ def get_signal(
     # RETURN NO TRADE
     # =====================================================
 
-    return {
+    return create_no_trade_result(
 
-        "pair": pair,
+        pair,
 
-        "timeframe": timeframe,
+        timeframe,
 
-        "signal": "NO TRADE",
+        reason,
 
-        "entry": "N/A",
+        news_info=news_info,
 
-        "take_profit": "N/A",
+        support=format_price(support),
 
-        "stop_loss": "N/A",
+        resistance=format_price(resistance),
 
-        "support": format_price(
-            support
-        ),
+        trend=trend,
 
-        "resistance": format_price(
-            resistance
-        ),
+        rsi=round(rsi, 2),
 
-        "trend": trend,
+        candlestick=candlestick,
 
-        "rsi": round(rsi, 2),
+        higher_trend=higher_trend
 
-        "candlestick": candlestick,
-
-        "confidence": 0,
-
-        "news_status": news_info.get(
-            "status",
-            "UNKNOWN"
-        ),
-
-        "news_message": news_info.get(
-            "message",
-            "Economic news status unavailable."
-        ),
-
-        "reason": reason
-
-}
+    )
