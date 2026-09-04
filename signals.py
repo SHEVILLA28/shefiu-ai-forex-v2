@@ -5,7 +5,7 @@ import threading
 import requests
 import pandas as pd
 
-from news_filter import has_high_impact_news
+from news_filter import get_news_status
 
 
 # =========================================================
@@ -124,12 +124,10 @@ def get_market_data(pair, timeframe):
 
         wait_for_rate_limit()
 
-
         print(
             f"Requesting Twelve Data market data: "
             f"{symbol} | {interval}"
         )
-
 
         response = requests.get(
             BASE_URL,
@@ -137,12 +135,10 @@ def get_market_data(pair, timeframe):
             timeout=30
         )
 
-
         print(
             f"Twelve Data status code: "
             f"{response.status_code}"
         )
-
 
         data = response.json()
 
@@ -444,40 +440,69 @@ def get_signal(pair, timeframe="5M"):
 
     try:
 
-        if has_high_impact_news(pair):
-
-            print(
-                f"Trading paused for {pair}: "
-                f"high-impact news detected."
-            )
-
-            return {
-                "pair": pair,
-                "timeframe": timeframe,
-                "signal": "NO TRADE",
-                "entry": "N/A",
-                "take_profit": "N/A",
-                "stop_loss": "N/A",
-                "support": "N/A",
-                "resistance": "N/A",
-                "trend": "WAIT",
-                "rsi": "N/A",
-                "confidence": 0,
-                "reason": (
-                    "High-impact economic news is affecting "
-                    "this Forex pair. Trading is temporarily paused."
-                )
-            }
+        news_info = get_news_status(pair)
 
 
     except Exception as e:
 
-        # If the news service has a problem,
-        # continue to market analysis instead of crashing
-
         print(
             f"News filter check failed: {e}"
         )
+
+        news_info = {
+            "blocked": False,
+            "status": "UNKNOWN",
+            "message": (
+                "Economic news filter could not be "
+                "checked."
+            ),
+            "currency": None,
+            "event": None
+        }
+
+
+    # =====================================================
+    # BLOCK TRADE IF HIGH-IMPACT NEWS EXISTS
+    # =====================================================
+
+    if news_info.get("blocked", False):
+
+        print(
+            f"Trading paused for {pair}: "
+            f"high-impact news detected."
+        )
+
+        return {
+            "pair": pair,
+            "timeframe": timeframe,
+            "signal": "NO TRADE",
+            "entry": "N/A",
+            "take_profit": "N/A",
+            "stop_loss": "N/A",
+            "support": "N/A",
+            "resistance": "N/A",
+            "trend": "WAIT",
+            "rsi": "N/A",
+            "confidence": 0,
+
+            "news_status": news_info.get(
+                "status",
+                "BLOCKED"
+            ),
+
+            "news_message": news_info.get(
+                "message",
+                "High-impact economic news detected."
+            ),
+
+            "reason": (
+                news_info.get(
+                    "message",
+                    "High-impact economic news is affecting "
+                    "this Forex pair. Trading is temporarily paused."
+                )
+            )
+        }
 
 
     # =====================================================
@@ -504,6 +529,17 @@ def get_signal(pair, timeframe="5M"):
             "trend": "WAIT",
             "rsi": "N/A",
             "confidence": 0,
+
+            "news_status": news_info.get(
+                "status",
+                "UNKNOWN"
+            ),
+
+            "news_message": news_info.get(
+                "message",
+                "Economic news status unavailable."
+            ),
+
             "reason": error_message
         }
 
@@ -599,6 +635,17 @@ def get_signal(pair, timeframe="5M"):
             "trend": "WAIT",
             "rsi": "N/A",
             "confidence": 0,
+
+            "news_status": news_info.get(
+                "status",
+                "UNKNOWN"
+            ),
+
+            "news_message": news_info.get(
+                "message",
+                "Economic news status unavailable."
+            ),
+
             "reason": (
                 f"Indicator calculation error: {e}"
             )
@@ -623,6 +670,17 @@ def get_signal(pair, timeframe="5M"):
             "trend": "WAIT",
             "rsi": "N/A",
             "confidence": 0,
+
+            "news_status": news_info.get(
+                "status",
+                "UNKNOWN"
+            ),
+
+            "news_message": news_info.get(
+                "message",
+                "Economic news status unavailable."
+            ),
+
             "reason": (
                 "Not enough data to calculate "
                 "technical indicators."
@@ -734,6 +792,17 @@ def get_signal(pair, timeframe="5M"):
             "trend": "BUY",
             "rsi": round(rsi, 2),
             "confidence": confidence,
+
+            "news_status": news_info.get(
+                "status",
+                "UNKNOWN"
+            ),
+
+            "news_message": news_info.get(
+                "message",
+                "Economic news status unavailable."
+            ),
+
             "reason": (
                 "Bullish trend confirmed by EMA 20 "
                 "above EMA 50, price above EMA 20, "
@@ -817,6 +886,17 @@ def get_signal(pair, timeframe="5M"):
             "trend": "SELL",
             "rsi": round(rsi, 2),
             "confidence": confidence,
+
+            "news_status": news_info.get(
+                "status",
+                "UNKNOWN"
+            ),
+
+            "news_message": news_info.get(
+                "message",
+                "Economic news status unavailable."
+            ),
+
             "reason": (
                 "Bearish trend confirmed by EMA 20 "
                 "below EMA 50, price below EMA 20, "
@@ -886,5 +966,16 @@ def get_signal(pair, timeframe="5M"):
         "trend": trend,
         "rsi": round(rsi, 2),
         "confidence": 0,
+
+        "news_status": news_info.get(
+            "status",
+            "UNKNOWN"
+        ),
+
+        "news_message": news_info.get(
+            "message",
+            "Economic news status unavailable."
+        ),
+
         "reason": reason
     }
