@@ -8,7 +8,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 import requests
 
 from config import BOT_TOKEN, CHAT_ID
-from telegram_bot import format_signal
+from telegram_bot import format_signal, run_telegram_bot
 from signals import get_signal
 
 from metaapi_trader import (
@@ -220,9 +220,6 @@ MAX_OPEN_TRADES = 2
 # =========================================================
 # TRADE COOLDOWN PROTECTION
 # =========================================================
-
-# Prevent the same pair from opening
-# another new trade too quickly
 
 TRADE_COOLDOWN = 1800
 
@@ -878,6 +875,22 @@ if __name__ == "__main__":
 
     print(
         "Automatic Forex scanner started."
+    )
+
+
+    # =====================================================
+    # START MANUAL TELEGRAM BOT
+    # =====================================================
+
+    telegram_thread = threading.Thread(
+        target=run_telegram_bot,
+        daemon=True
+    )
+
+    telegram_thread.start()
+
+    print(
+        "Manual Telegram bot started."
     )
 
 
