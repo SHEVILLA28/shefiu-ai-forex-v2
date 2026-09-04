@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 
 # =========================================================
-# XOOMAR ECONOMIC NEWS FILTER
+# SHEFIU AI FOREX V2 - ECONOMIC NEWS FILTER
 # =========================================================
 
 NEWS_URL = "https://xoomar.com/api/markets/calendar"
@@ -20,7 +20,10 @@ def get_pair_currencies(pair):
     if len(pair) != 6:
         return None, None
 
-    return pair[:3], pair[3:]
+    base_currency = pair[:3]
+    quote_currency = pair[3:]
+
+    return base_currency, quote_currency
 
 
 # =========================================================
@@ -30,6 +33,8 @@ def get_pair_currencies(pair):
 def get_economic_news():
 
     try:
+
+        print("Checking economic news...")
 
         response = requests.get(
             NEWS_URL,
@@ -41,17 +46,47 @@ def get_economic_news():
         response_data = response.json()
 
 
-        # Xoomar API returns data inside "data"
+        # =============================================
+        # API RETURNS DATA INSIDE "data"
+        # =============================================
 
         if isinstance(response_data, dict):
 
-            return response_data.get(
+            news_data = response_data.get(
                 "data",
                 []
             )
 
+            if isinstance(news_data, list):
 
-        return response_data
+                print(
+                    f"Economic news events received: "
+                    f"{len(news_data)}"
+                )
+
+                return news_data
+
+
+        # =============================================
+        # API RETURNS LIST DIRECTLY
+        # =============================================
+
+        if isinstance(response_data, list):
+
+            print(
+                f"Economic news events received: "
+                f"{len(response_data)}"
+            )
+
+            return response_data
+
+
+        print(
+            "Economic news API returned an "
+            "unexpected format."
+        )
+
+        return []
 
 
     except Exception as e:
@@ -64,10 +99,64 @@ def get_economic_news():
 
 
 # =========================================================
-# CHECK FOR HIGH IMPACT NEWS
+# PARSE EVENT TIME
 # =========================================================
 
-def has_high_impact_news(pair):
+def parse_event_time(event):
+
+    event_time_string = (
+
+        event.get("date")
+
+        or event.get("datetime")
+
+        or event.get("time")
+
+    )
+
+
+    if not event_time_string:
+
+        return None
+
+
+    try:
+
+        event_time = datetime.fromisoformat(
+            str(event_time_string).replace(
+                "Z",
+                "+00:00"
+            )
+        )
+
+
+        if event_time.tzinfo is None:
+
+            event_time = event_time.replace(
+                tzinfo=timezone.utc
+            )
+
+
+        return event_time.astimezone(
+            timezone.utc
+        )
+
+
+    except Exception:
+
+        return None
+
+
+# =========================================================
+# CHECK NEWS STATUS
+# =========================================================
+
+def get_news_status(pair):
+
+
+    # =============================================
+    # GET PAIR CURRENCIES
+    # =============================================
 
     base_currency, quote_currency = (
         get_pair_currencies(pair)
@@ -76,115 +165,218 @@ def has_high_impact_news(pair):
 
     if not base_currency:
 
-        return False
+        return {
+            "blocked": False,
+            "status": "UNKNOWN",
+            "message": (
+                "Unable to identify currencies "
+                "for this Forex pair."
+            ),
+            "currency": None,
+            "event": None
+        }
 
+
+    # =============================================
+    # GET NEWS EVENTS
+    # =============================================
 
     news_events = get_economic_news()
 
 
-    now = datetime.now(timezone.utc)
+    if not news_events:
+
+        return {
+            "blocked": False,
+            "status": "CLEAR",
+            "message": (
+                "No high-impact economic news "
+                "detected for this pair."
+            ),
+            "currency": None,
+            "event": None
+        }
+
+
+    # =============================================
+    # CURRENT UTC TIME
+    # =============================================
+
+    now = datetime.now(
+        timezone.utc
+    )
+
+
+    # =============================================
+    # NEWS PROTECTION WINDOW
+    #
+    # 30 MINUTES BEFORE
+    # 30 MINUTES AFTER
+    # =============================================
 
     news_window_before = (
         now - timedelta(minutes=30)
     )
+
 
     news_window_after = (
         now + timedelta(minutes=30)
     )
 
 
+    # =============================================
+    # CHECK EVERY NEWS EVENT
+    # =============================================
+
     for event in news_events:
 
         try:
 
+            if not isinstance(event, dict):
+
+                continue
+
+
+            # =========================================
+            # GET IMPORTANCE
+            # =========================================
+
             importance = str(
                 event.get(
                     "importance",
-                    ""
+                    event.get(
+                        "impact",
+                        ""
+                    )
                 )
             ).lower()
 
 
+            # =========================================
+            # ONLY HIGH IMPACT NEWS
+            # =========================================
+
+            high_impact_values = [
+
+                "high",
+
+                "high impact",
+
+                "3",
+
+                "3.0"
+
+            ]
+
+
+            if importance not in high_impact_values:
+
+                continue
+
+
+            # =========================================
+            # GET CURRENCY
+            # =========================================
+
             currency = str(
                 event.get(
                     "currency",
-                    event.get(
-                        "country",
-                        ""
-                    )
+                    ""
                 )
-            ).upper()
+            ).upper().strip()
 
 
-            # Only high-impact events
+            # =========================================
+            # CHECK IF EVENT AFFECTS PAIR
+            # =========================================
 
-            if importance not in [
-                "high",
-                "3",
-                "high impact"
+            if currency not in [
+
+                base_currency,
+
+                quote_currency
+
             ]:
 
                 continue
 
 
-            # Check if news affects this Forex pair
+            # =========================================
+            # GET EVENT TIME
+            # =========================================
 
-            if (
-                currency != base_currency
-                and currency != quote_currency
-            ):
-
-                continue
-
-
-            event_time_string = event.get(
-                "date"
-            ) or event.get(
-                "datetime"
-            ) or event.get(
-                "time"
+            event_time = parse_event_time(
+                event
             )
 
 
-            if not event_time_string:
+            if event_time is None:
 
                 continue
 
 
-            try:
-
-                event_time = datetime.fromisoformat(
-                    str(event_time_string).replace(
-                        "Z",
-                        "+00:00"
-                    )
-                )
-
-
-                if event_time.tzinfo is None:
-
-                    event_time = event_time.replace(
-                        tzinfo=timezone.utc
-                    )
-
-
-            except Exception:
-
-                continue
-
+            # =========================================
+            # CHECK TIME WINDOW
+            # =========================================
 
             if (
+
                 news_window_before
+
                 <= event_time
+
                 <= news_window_after
+
             ):
 
-                print(
-                    f"HIGH IMPACT NEWS WARNING: "
-                    f"{pair} affected by {currency}"
+
+                event_name = (
+
+                    event.get("title")
+
+                    or event.get("event")
+
+                    or event.get("name")
+
+                    or "High-impact economic news"
+
                 )
 
-                return True
+
+                print(
+
+                    f"HIGH IMPACT NEWS WARNING: "
+
+                    f"{pair} affected by "
+
+                    f"{currency} | "
+
+                    f"{event_name}"
+
+                )
+
+
+                return {
+
+                    "blocked": True,
+
+                    "status": "BLOCKED",
+
+                    "message": (
+
+                        f"High-impact {currency} news "
+
+                        f"detected: {event_name}. "
+
+                        f"Trading temporarily paused."
+
+                    ),
+
+                    "currency": currency,
+
+                    "event": event_name
+
+                }
 
 
         except Exception as e:
@@ -196,4 +388,40 @@ def has_high_impact_news(pair):
             continue
 
 
-    return False
+    # =============================================
+    # NO DANGEROUS NEWS FOUND
+    # =============================================
+
+    return {
+
+        "blocked": False,
+
+        "status": "CLEAR",
+
+        "message": (
+
+            "No high-impact economic news "
+
+            "detected for this Forex pair."
+
+        ),
+
+        "currency": None,
+
+        "event": None
+
+    }
+
+
+# =========================================================
+# COMPATIBILITY FUNCTION
+# =========================================================
+
+def has_high_impact_news(pair):
+
+    news_status = get_news_status(pair)
+
+    return news_status.get(
+        "blocked",
+        False
+            )
