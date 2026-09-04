@@ -375,6 +375,165 @@ def calculate_atr(df, period=14):
 
 
 # =========================================================
+# CANDLESTICK PATTERN DETECTION
+# =========================================================
+
+def get_candlestick_signal(df):
+
+    latest = df.iloc[-1]
+
+    previous = df.iloc[-2]
+
+
+    # =====================================================
+    # CURRENT CANDLE
+    # =====================================================
+
+    current_open = float(latest["open"])
+
+    current_high = float(latest["high"])
+
+    current_low = float(latest["low"])
+
+    current_close = float(latest["close"])
+
+
+    # =====================================================
+    # PREVIOUS CANDLE
+    # =====================================================
+
+    previous_open = float(previous["open"])
+
+    previous_close = float(previous["close"])
+
+
+    # =====================================================
+    # CANDLE BODY AND WICKS
+    # =====================================================
+
+    body = abs(
+        current_close - current_open
+    )
+
+
+    candle_range = (
+        current_high - current_low
+    )
+
+
+    if candle_range <= 0:
+
+        return "NONE"
+
+
+    lower_wick = min(
+        current_open,
+        current_close
+    ) - current_low
+
+
+    upper_wick = current_high - max(
+        current_open,
+        current_close
+    )
+
+
+    # =====================================================
+    # BULLISH ENGULFING
+    # =====================================================
+
+    bullish_engulfing = (
+
+        previous_close < previous_open
+
+        and current_close > current_open
+
+        and current_open <= previous_close
+
+        and current_close >= previous_open
+
+    )
+
+
+    # =====================================================
+    # BEARISH ENGULFING
+    # =====================================================
+
+    bearish_engulfing = (
+
+        previous_close > previous_open
+
+        and current_close < current_open
+
+        and current_open >= previous_close
+
+        and current_close <= previous_open
+
+    )
+
+
+    # =====================================================
+    # HAMMER
+    # =====================================================
+
+    hammer = (
+
+        body > 0
+
+        and lower_wick >= body * 2
+
+        and upper_wick <= body * 1.5
+
+        and current_close >= current_open
+
+    )
+
+
+    # =====================================================
+    # SHOOTING STAR
+    # =====================================================
+
+    shooting_star = (
+
+        body > 0
+
+        and upper_wick >= body * 2
+
+        and lower_wick <= body * 1.5
+
+        and current_close <= current_open
+
+    )
+
+
+    # =====================================================
+    # RETURN CANDLE PATTERN
+    # =====================================================
+
+    if bullish_engulfing:
+
+        return "BULLISH ENGULFING"
+
+
+    elif bearish_engulfing:
+
+        return "BEARISH ENGULFING"
+
+
+    elif hammer:
+
+        return "HAMMER"
+
+
+    elif shooting_star:
+
+        return "SHOOTING STAR"
+
+
+    return "NONE"
+
+
+# =========================================================
 # SUPPORT AND RESISTANCE
 # =========================================================
 
@@ -473,8 +632,12 @@ def get_signal(pair, timeframe="5M"):
             "resistance": "N/A",
             "trend": "WAIT",
             "rsi": "N/A",
+            "candlestick": "N/A",
             "confidence": 0,
-            "news_status": news_info.get("status", "BLOCKED"),
+            "news_status": news_info.get(
+                "status",
+                "BLOCKED"
+            ),
             "news_message": news_info.get(
                 "message",
                 "High-impact economic news detected."
@@ -509,8 +672,12 @@ def get_signal(pair, timeframe="5M"):
             "resistance": "N/A",
             "trend": "WAIT",
             "rsi": "N/A",
+            "candlestick": "N/A",
             "confidence": 0,
-            "news_status": news_info.get("status", "UNKNOWN"),
+            "news_status": news_info.get(
+                "status",
+                "UNKNOWN"
+            ),
             "news_message": news_info.get(
                 "message",
                 "Economic news status unavailable."
@@ -530,15 +697,18 @@ def get_signal(pair, timeframe="5M"):
             20
         )
 
+
         df["ema_50"] = calculate_ema(
             df["close"],
             50
         )
 
+
         df["rsi"] = calculate_rsi(
             df["close"],
             14
         )
+
 
         df["atr"] = calculate_atr(
             df,
@@ -558,6 +728,15 @@ def get_signal(pair, timeframe="5M"):
         )
 
 
+        # =================================================
+        # CANDLESTICK PATTERN
+        # =================================================
+
+        candlestick = get_candlestick_signal(
+            df
+        )
+
+
         latest = df.iloc[-1]
 
         previous = df.iloc[-2]
@@ -565,17 +744,30 @@ def get_signal(pair, timeframe="5M"):
 
         close = float(latest["close"])
 
+
         previous_close = float(
             previous["close"]
         )
 
-        ema_20 = float(latest["ema_20"])
 
-        ema_50 = float(latest["ema_50"])
+        ema_20 = float(
+            latest["ema_20"]
+        )
 
-        rsi = float(latest["rsi"])
 
-        atr = float(latest["atr"])
+        ema_50 = float(
+            latest["ema_50"]
+        )
+
+
+        rsi = float(
+            latest["rsi"]
+        )
+
+
+        atr = float(
+            latest["atr"]
+        )
 
 
     except Exception as e:
@@ -591,8 +783,12 @@ def get_signal(pair, timeframe="5M"):
             "resistance": "N/A",
             "trend": "WAIT",
             "rsi": "N/A",
+            "candlestick": "N/A",
             "confidence": 0,
-            "news_status": news_info.get("status", "UNKNOWN"),
+            "news_status": news_info.get(
+                "status",
+                "UNKNOWN"
+            ),
             "news_message": news_info.get(
                 "message",
                 "Economic news status unavailable."
@@ -620,8 +816,12 @@ def get_signal(pair, timeframe="5M"):
             "resistance": format_price(resistance),
             "trend": "WAIT",
             "rsi": "N/A",
+            "candlestick": candlestick,
             "confidence": 0,
-            "news_status": news_info.get("status", "UNKNOWN"),
+            "news_status": news_info.get(
+                "status",
+                "UNKNOWN"
+            ),
             "news_message": news_info.get(
                 "message",
                 "Economic news status unavailable."
@@ -641,9 +841,11 @@ def get_signal(pair, timeframe="5M"):
 
         trend = "BUY"
 
+
     elif ema_20 < ema_50:
 
         trend = "SELL"
+
 
     else:
 
@@ -660,30 +862,75 @@ def get_signal(pair, timeframe="5M"):
 
 
     # =====================================================
+    # CANDLESTICK CONFIRMATION
+    # =====================================================
+
+    bullish_candle = (
+
+        candlestick == "BULLISH ENGULFING"
+
+        or candlestick == "HAMMER"
+
+    )
+
+
+    bearish_candle = (
+
+        candlestick == "BEARISH ENGULFING"
+
+        or candlestick == "SHOOTING STAR"
+
+    )
+
+
+    # =====================================================
     # BUY CONDITIONS
     # =====================================================
 
     bullish_price = close > ema_20
 
-    bullish_momentum = close > previous_close
+
+    bullish_momentum = (
+        close > previous_close
+    )
+
 
     bullish_rsi = (
+
         rsi >= 45
+
         and rsi <= 70
+
     )
+
 
     buy_safe_from_resistance = (
+
         distance_to_resistance >= atr * 1.0
+
     )
 
 
+    # =====================================================
+    # BUY SIGNAL
+    # =====================================================
+
     if (
+
         trend == "BUY"
+
         and bullish_price
+
         and bullish_momentum
+
         and bullish_rsi
+
         and buy_safe_from_resistance
+
+        and bullish_candle
+
     ):
+
 
         entry = close
 
@@ -692,26 +939,42 @@ def get_signal(pair, timeframe="5M"):
         # STOP LOSS
         # =================================================
 
-        stop_loss = close - (atr * 1.5)
+        stop_loss = (
+            close - (atr * 1.5)
+        )
 
 
         # =================================================
-        # INCREASED TAKE PROFIT
-        # ATR × 3.0
+        # TAKE PROFIT
         # =================================================
 
-        take_profit = close + (atr * 3.0)
+        take_profit = (
+            close + (atr * 3.0)
+        )
 
 
         confidence = 70
 
+
         if rsi >= 50:
+
             confidence += 10
 
+
         if rsi >= 55:
+
             confidence += 5
 
-        confidence += 5
+
+        # Candlestick confirmation
+
+        confidence += 10
+
+
+        confidence = min(
+            confidence,
+            95
+        )
 
 
         return {
@@ -719,23 +982,35 @@ def get_signal(pair, timeframe="5M"):
             "timeframe": timeframe,
             "signal": "BUY",
             "entry": format_price(entry),
-            "take_profit": format_price(take_profit),
-            "stop_loss": format_price(stop_loss),
-            "support": format_price(support),
-            "resistance": format_price(resistance),
+            "take_profit": format_price(
+                take_profit
+            ),
+            "stop_loss": format_price(
+                stop_loss
+            ),
+            "support": format_price(
+                support
+            ),
+            "resistance": format_price(
+                resistance
+            ),
             "trend": "BUY",
             "rsi": round(rsi, 2),
+            "candlestick": candlestick,
             "confidence": confidence,
-            "news_status": news_info.get("status", "UNKNOWN"),
+            "news_status": news_info.get(
+                "status",
+                "UNKNOWN"
+            ),
             "news_message": news_info.get(
                 "message",
                 "Economic news status unavailable."
             ),
             "reason": (
-                "Bullish trend confirmed by EMA 20 "
-                "above EMA 50, price above EMA 20, "
-                "positive momentum and bullish RSI. "
-                "Take Profit has been increased."
+                "BUY confirmed by EMA trend, "
+                "price momentum, RSI, support and "
+                "resistance safety, and bullish "
+                f"candlestick pattern: {candlestick}."
             )
         }
 
@@ -746,25 +1021,48 @@ def get_signal(pair, timeframe="5M"):
 
     bearish_price = close < ema_20
 
-    bearish_momentum = close < previous_close
+
+    bearish_momentum = (
+        close < previous_close
+    )
+
 
     bearish_rsi = (
+
         rsi >= 30
+
         and rsi <= 55
+
     )
+
 
     sell_safe_from_support = (
+
         distance_to_support >= atr * 1.0
+
     )
 
 
+    # =====================================================
+    # SELL SIGNAL
+    # =====================================================
+
     if (
+
         trend == "SELL"
+
         and bearish_price
+
         and bearish_momentum
+
         and bearish_rsi
+
         and sell_safe_from_support
+
+        and bearish_candle
+
     ):
+
 
         entry = close
 
@@ -773,26 +1071,42 @@ def get_signal(pair, timeframe="5M"):
         # STOP LOSS
         # =================================================
 
-        stop_loss = close + (atr * 1.5)
+        stop_loss = (
+            close + (atr * 1.5)
+        )
 
 
         # =================================================
-        # INCREASED TAKE PROFIT
-        # ATR × 3.0
+        # TAKE PROFIT
         # =================================================
 
-        take_profit = close - (atr * 3.0)
+        take_profit = (
+            close - (atr * 3.0)
+        )
 
 
         confidence = 70
 
+
         if rsi <= 50:
+
             confidence += 10
 
+
         if rsi <= 45:
+
             confidence += 5
 
-        confidence += 5
+
+        # Candlestick confirmation
+
+        confidence += 10
+
+
+        confidence = min(
+            confidence,
+            95
+        )
 
 
         return {
@@ -800,23 +1114,35 @@ def get_signal(pair, timeframe="5M"):
             "timeframe": timeframe,
             "signal": "SELL",
             "entry": format_price(entry),
-            "take_profit": format_price(take_profit),
-            "stop_loss": format_price(stop_loss),
-            "support": format_price(support),
-            "resistance": format_price(resistance),
+            "take_profit": format_price(
+                take_profit
+            ),
+            "stop_loss": format_price(
+                stop_loss
+            ),
+            "support": format_price(
+                support
+            ),
+            "resistance": format_price(
+                resistance
+            ),
             "trend": "SELL",
             "rsi": round(rsi, 2),
+            "candlestick": candlestick,
             "confidence": confidence,
-            "news_status": news_info.get("status", "UNKNOWN"),
+            "news_status": news_info.get(
+                "status",
+                "UNKNOWN"
+            ),
             "news_message": news_info.get(
                 "message",
                 "Economic news status unavailable."
             ),
             "reason": (
-                "Bearish trend confirmed by EMA 20 "
-                "below EMA 50, price below EMA 20, "
-                "negative momentum and bearish RSI. "
-                "Take Profit has been increased."
+                "SELL confirmed by EMA trend, "
+                "price momentum, RSI, support and "
+                "resistance safety, and bearish "
+                f"candlestick pattern: {candlestick}."
             )
         }
 
@@ -833,6 +1159,7 @@ def get_signal(pair, timeframe="5M"):
             "entry."
         )
 
+
     elif trend == "SELL" and not sell_safe_from_support:
 
         reason = (
@@ -840,6 +1167,25 @@ def get_signal(pair, timeframe="5M"):
             "close to support. Waiting for a safer "
             "entry."
         )
+
+
+    elif trend == "BUY" and not bullish_candle:
+
+        reason = (
+            "Bullish trend detected, but there is no "
+            "strong bullish candlestick confirmation yet. "
+            f"Current candle pattern: {candlestick}."
+        )
+
+
+    elif trend == "SELL" and not bearish_candle:
+
+        reason = (
+            "Bearish trend detected, but there is no "
+            "strong bearish candlestick confirmation yet. "
+            f"Current candle pattern: {candlestick}."
+        )
+
 
     elif trend == "BUY":
 
@@ -849,6 +1195,7 @@ def get_signal(pair, timeframe="5M"):
             "all strong enough yet."
         )
 
+
     elif trend == "SELL":
 
         reason = (
@@ -857,6 +1204,7 @@ def get_signal(pair, timeframe="5M"):
             "all strong enough yet."
         )
 
+
     else:
 
         reason = (
@@ -864,6 +1212,10 @@ def get_signal(pair, timeframe="5M"):
             "Waiting for a stronger setup."
         )
 
+
+    # =====================================================
+    # RETURN NO TRADE
+    # =====================================================
 
     return {
         "pair": pair,
@@ -876,11 +1228,15 @@ def get_signal(pair, timeframe="5M"):
         "resistance": format_price(resistance),
         "trend": trend,
         "rsi": round(rsi, 2),
+        "candlestick": candlestick,
         "confidence": 0,
-        "news_status": news_info.get("status", "UNKNOWN"),
+        "news_status": news_info.get(
+            "status",
+            "UNKNOWN"
+        ),
         "news_message": news_info.get(
             "message",
             "Economic news status unavailable."
         ),
         "reason": reason
-            }
+    }
