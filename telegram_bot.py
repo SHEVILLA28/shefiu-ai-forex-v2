@@ -92,6 +92,12 @@ def send_message(chat_id, text):
         )
 
 
+        print(
+            f"Telegram status: "
+            f"{response.status_code}"
+        )
+
+
         return response.ok
 
 
@@ -109,6 +115,11 @@ def send_message(chat_id, text):
 # =========================================================
 
 def format_signal(result):
+
+
+    # =============================================
+    # BASIC SIGNAL INFORMATION
+    # =============================================
 
     signal = result.get(
         "signal",
@@ -140,21 +151,9 @@ def format_signal(result):
     )
 
 
-    # =====================================================
-    # SUPPORT AND RESISTANCE
-    # =====================================================
-
-    support = result.get(
-        "support",
-        "N/A"
-    )
-
-
-    resistance = result.get(
-        "resistance",
-        "N/A"
-    )
-
+    # =============================================
+    # SIGNAL ICON
+    # =============================================
 
     if signal == "BUY":
 
@@ -171,9 +170,9 @@ def format_signal(result):
         icon = "⚪"
 
 
-    # =====================================================
-    # MAIN MESSAGE
-    # =====================================================
+    # =============================================
+    # START MESSAGE
+    # =============================================
 
     message = (
 
@@ -188,9 +187,9 @@ def format_signal(result):
     )
 
 
-    # =====================================================
-    # TRADE DETAILS
-    # =====================================================
+    # =============================================
+    # ENTRY / TP / SL
+    # =============================================
 
     if signal in ["BUY", "SELL"]:
 
@@ -208,9 +207,21 @@ def format_signal(result):
         )
 
 
-    # =====================================================
-    # SUPPORT AND RESISTANCE DISPLAY
-    # =====================================================
+    # =============================================
+    # SUPPORT AND RESISTANCE
+    # =============================================
+
+    support = result.get(
+        "support",
+        "N/A"
+    )
+
+
+    resistance = result.get(
+        "resistance",
+        "N/A"
+    )
+
 
     message += (
 
@@ -223,9 +234,9 @@ def format_signal(result):
     )
 
 
-    # =====================================================
-    # ANALYSIS DETAILS
-    # =====================================================
+    # =============================================
+    # TREND / RSI / CONFIDENCE
+    # =============================================
 
     message += (
 
@@ -237,9 +248,164 @@ def format_signal(result):
         f"🔥 Confidence: "
         f"{result.get('confidence', 0)}%\n\n"
 
+    )
+
+
+    # =====================================================
+    # ECONOMIC NEWS FILTER
+    # =====================================================
+
+    news_status = result.get(
+        "news_status",
+        None
+    )
+
+
+    news_reason = result.get(
+        "news_reason",
+        None
+    )
+
+
+    # Try alternative names if signals.py uses them
+
+    if news_status is None:
+
+        news_status = result.get(
+            "news_filter",
+            None
+        )
+
+
+    if news_reason is None:
+
+        news_reason = result.get(
+            "news_message",
+            None
+        )
+
+
+    # ---------------------------------------------
+    # SAFE NEWS STATUS
+    # ---------------------------------------------
+
+    if news_status in [
+
+        "SAFE",
+        "CLEAR",
+        "NO_HIGH_IMPACT_NEWS",
+        True
+
+    ]:
+
+
+        message += (
+
+            "📰 ECONOMIC NEWS FILTER\n\n"
+
+            "🟢 Status: SAFE\n"
+
+            "✅ No dangerous high-impact "
+            "economic news detected.\n\n"
+
+        )
+
+
+    # ---------------------------------------------
+    # NEWS BLOCKED
+    # ---------------------------------------------
+
+    elif news_status in [
+
+        "BLOCKED",
+        "HIGH_IMPACT_NEWS",
+        False
+
+    ]:
+
+
+        message += (
+
+            "📰 ECONOMIC NEWS FILTER\n\n"
+
+            "🔴 Status: NEWS BLOCKED\n"
+
+        )
+
+
+        if news_reason:
+
+            message += (
+
+                f"⚠️ {news_reason}\n\n"
+
+            )
+
+
+        else:
+
+            message += (
+
+                "⚠️ High-impact economic news "
+                "may affect this market.\n\n"
+
+            )
+
+
+    # ---------------------------------------------
+    # CUSTOM NEWS MESSAGE
+    # ---------------------------------------------
+
+    elif news_status:
+
+
+        message += (
+
+            "📰 ECONOMIC NEWS FILTER\n\n"
+
+            f"ℹ️ Status: {news_status}\n"
+
+        )
+
+
+        if news_reason:
+
+            message += (
+
+                f"📝 {news_reason}\n"
+
+            )
+
+
+        message += "\n"
+
+
+    # ---------------------------------------------
+    # NEWS STATUS NOT AVAILABLE
+    # ---------------------------------------------
+
+    else:
+
+
+        message += (
+
+            "📰 ECONOMIC NEWS FILTER\n\n"
+
+            "ℹ️ Status: Checking economic news...\n\n"
+
+        )
+
+
+    # =============================================
+    # REASON
+    # =============================================
+
+    message += (
+
         f"📝 Reason: {reason}\n\n"
 
-        "⚠️ Signal only. No guaranteed profit."
+        "⚠️ Signal only. "
+        "No guaranteed profit."
 
     )
 
@@ -266,6 +432,7 @@ def can_make_manual_request(chat_id):
 
 
     if elapsed < MANUAL_REQUEST_COOLDOWN:
+
 
         remaining = int(
             MANUAL_REQUEST_COOLDOWN - elapsed
@@ -296,6 +463,7 @@ def get_cached_signal(pair):
 
 
     result = cached["result"]
+
 
     saved_time = cached["time"]
 
@@ -339,7 +507,9 @@ def run_telegram_bot():
 
     while True:
 
+
         try:
+
 
             url = (
 
@@ -378,9 +548,11 @@ def run_telegram_bot():
 
             if not data.get("ok"):
 
+
                 print(
                     "Telegram getUpdates error"
                 )
+
 
                 time.sleep(5)
 
@@ -391,6 +563,7 @@ def run_telegram_bot():
                 "result",
                 []
             ):
+
 
                 offset = (
                     update["update_id"] + 1
@@ -426,6 +599,10 @@ def run_telegram_bot():
 
                 if text in FOREX_PAIRS:
 
+
+                    # =====================================
+                    # CHECK CACHE FIRST
+                    # =====================================
 
                     cached_result = get_cached_signal(
                         text
@@ -506,6 +683,7 @@ def run_telegram_bot():
 
                     try:
 
+
                         result = get_signal(
 
                             text,
@@ -514,6 +692,10 @@ def run_telegram_bot():
 
                         )
 
+
+                        # =================================
+                        # SAVE RESULT
+                        # =================================
 
                         save_signal_to_cache(
 
@@ -539,6 +721,7 @@ def run_telegram_bot():
 
 
                     except Exception as e:
+
 
                         print(
                             f"Manual analysis error: {e}"
@@ -579,6 +762,10 @@ def run_telegram_bot():
 
                         f"⏱ Timeframe: {TIMEFRAME}\n\n"
 
+                        "📰 Economic News Filter: ACTIVE\n\n"
+
+                        "📊 Support and Resistance: ACTIVE\n\n"
+
                         "⏳ Manual requests are protected "
                         "to prevent API rate limits."
 
@@ -596,8 +783,10 @@ def run_telegram_bot():
 
         except Exception as e:
 
+
             print(
                 f"Telegram bot error: {e}"
             )
+
 
             time.sleep(5)
