@@ -140,6 +140,22 @@ def format_signal(result):
     )
 
 
+    # =====================================================
+    # SUPPORT AND RESISTANCE
+    # =====================================================
+
+    support = result.get(
+        "support",
+        "N/A"
+    )
+
+
+    resistance = result.get(
+        "resistance",
+        "N/A"
+    )
+
+
     if signal == "BUY":
 
         icon = "🟢"
@@ -155,6 +171,10 @@ def format_signal(result):
         icon = "⚪"
 
 
+    # =====================================================
+    # MAIN MESSAGE
+    # =====================================================
+
     message = (
 
         "🤖 SHEFIU AI FOREX V2\n\n"
@@ -167,6 +187,10 @@ def format_signal(result):
 
     )
 
+
+    # =====================================================
+    # TRADE DETAILS
+    # =====================================================
 
     if signal in ["BUY", "SELL"]:
 
@@ -183,6 +207,25 @@ def format_signal(result):
 
         )
 
+
+    # =====================================================
+    # SUPPORT AND RESISTANCE DISPLAY
+    # =====================================================
+
+    message += (
+
+        "📊 MARKET LEVELS\n\n"
+
+        f"🟢 Support: {support}\n"
+
+        f"🔴 Resistance: {resistance}\n\n"
+
+    )
+
+
+    # =====================================================
+    # ANALYSIS DETAILS
+    # =====================================================
 
     message += (
 
@@ -384,10 +427,6 @@ def run_telegram_bot():
                 if text in FOREX_PAIRS:
 
 
-                    # =====================================
-                    # CHECK CACHE FIRST
-                    # =====================================
-
                     cached_result = get_cached_signal(
                         text
                     )
@@ -475,10 +514,6 @@ def run_telegram_bot():
 
                         )
 
-
-                        # =================================
-                        # SAVE RESULT
-                        # =================================
 
                         save_signal_to_cache(
 
