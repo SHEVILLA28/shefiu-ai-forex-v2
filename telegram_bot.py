@@ -119,14 +119,11 @@ def send_message(chat_id, text):
 
 # =========================================================
 # FORMAT SIGNAL
+# SHORT PROFESSIONAL FORMAT
 # =========================================================
 
 def format_signal(result):
 
-
-    # =====================================================
-    # BASIC INFORMATION
-    # =====================================================
 
     signal = result.get(
         "signal",
@@ -152,15 +149,45 @@ def format_signal(result):
     )
 
 
-    reason = result.get(
-        "reason",
-        "No reason available."
-    )
-
-
     confidence = result.get(
         "confidence",
         0
+    )
+
+
+    rsi = result.get(
+        "rsi",
+        "N/A"
+    )
+
+
+    candlestick = result.get(
+        "candlestick",
+        "N/A"
+    )
+
+
+    news_status = result.get(
+        "news_status",
+        "UNKNOWN"
+    )
+
+
+    entry = result.get(
+        "entry",
+        "N/A"
+    )
+
+
+    take_profit = result.get(
+        "take_profit",
+        "N/A"
+    )
+
+
+    stop_loss = result.get(
+        "stop_loss",
+        "N/A"
     )
 
 
@@ -170,175 +197,22 @@ def format_signal(result):
 
     if signal == "BUY":
 
-        icon = "🟢"
+        signal_icon = "🟢"
 
 
     elif signal == "SELL":
 
-        icon = "🔴"
+        signal_icon = "🔴"
 
 
     else:
 
-        icon = "⚪"
+        signal_icon = "⚪"
 
 
     # =====================================================
-    # START MESSAGE
+    # NEWS STATUS
     # =====================================================
-
-    message = (
-
-        "╔════════════════════╗\n"
-        "🤖 SHEFIU AI FOREX VIP\n"
-        "╚════════════════════╝\n\n"
-
-        f"📊 PAIR: {pair}\n\n"
-
-        f"{icon} SIGNAL: {signal}\n\n"
-
-        f"⏱ TIMEFRAME: {timeframe}\n\n"
-
-    )
-
-
-    # =====================================================
-    # ENTRY / TP / SL
-    # =====================================================
-
-    if signal in ["BUY", "SELL"]:
-
-        message += (
-
-            "💰 TRADE SETUP\n\n"
-
-            f"🎯 Entry: "
-            f"{result.get('entry', 'N/A')}\n"
-
-            f"✅ Take Profit: "
-            f"{result.get('take_profit', 'N/A')}\n"
-
-            f"🛑 Stop Loss: "
-            f"{result.get('stop_loss', 'N/A')}\n\n"
-
-        )
-
-
-    # =====================================================
-    # SUPPORT AND RESISTANCE
-    # =====================================================
-
-    support = result.get(
-        "support",
-        "N/A"
-    )
-
-
-    resistance = result.get(
-        "resistance",
-        "N/A"
-    )
-
-
-    message += (
-
-        "📊 MARKET LEVELS\n\n"
-
-        f"🟢 Support: {support}\n"
-
-        f"🔴 Resistance: {resistance}\n\n"
-
-    )
-
-
-    # =====================================================
-    # CANDLESTICK ANALYSIS
-    # =====================================================
-
-    candlestick = result.get(
-        "candlestick",
-        "N/A"
-    )
-
-
-    candle_icon = "🕯"
-
-
-    if candlestick in [
-
-        "BULLISH ENGULFING",
-        "HAMMER"
-
-    ]:
-
-        candle_status = "🟢 BULLISH CONFIRMATION"
-
-
-    elif candlestick in [
-
-        "BEARISH ENGULFING",
-        "SHOOTING STAR"
-
-    ]:
-
-        candle_status = "🔴 BEARISH CONFIRMATION"
-
-
-    elif candlestick == "NONE":
-
-        candle_status = "⚪ NO STRONG PATTERN"
-
-
-    else:
-
-        candle_status = "ℹ️ WAITING"
-
-
-    message += (
-
-        "🕯 CANDLESTICK ANALYSIS\n\n"
-
-        f"{candle_icon} Pattern: {candlestick}\n"
-
-        f"{candle_status}\n\n"
-
-    )
-
-
-    # =====================================================
-    # TREND / RSI / CONFIDENCE
-    # =====================================================
-
-    message += (
-
-        "📈 MARKET ANALYSIS\n\n"
-
-        f"📈 Trend: {trend}\n"
-
-        f"📊 RSI: "
-        f"{result.get('rsi', 'N/A')}\n"
-
-        f"🔥 Confidence: "
-        f"{confidence}%\n\n"
-
-    )
-
-
-    # =====================================================
-    # ECONOMIC NEWS FILTER
-    # =====================================================
-
-    news_status = result.get(
-        "news_status",
-        None
-    )
-
-
-    news_reason = result.get(
-        "news_message",
-        None
-    )
-
 
     if news_status in [
 
@@ -348,17 +222,7 @@ def format_signal(result):
 
     ]:
 
-
-        message += (
-
-            "📰 ECONOMIC NEWS FILTER\n\n"
-
-            "🟢 Status: SAFE\n"
-
-            "✅ No dangerous high-impact "
-            "economic news detected.\n\n"
-
-        )
+        news_text = "SAFE ✅"
 
 
     elif news_status in [
@@ -368,76 +232,80 @@ def format_signal(result):
 
     ]:
 
-
-        message += (
-
-            "📰 ECONOMIC NEWS FILTER\n\n"
-
-            "🔴 Status: NEWS BLOCKED\n\n"
-
-        )
-
-
-        if news_reason:
-
-            message += (
-
-                f"⚠️ {news_reason}\n\n"
-
-            )
-
-
-    elif news_status:
-
-
-        message += (
-
-            "📰 ECONOMIC NEWS FILTER\n\n"
-
-            f"ℹ️ Status: {news_status}\n\n"
-
-        )
-
-
-        if news_reason:
-
-            message += (
-
-                f"📝 {news_reason}\n\n"
-
-            )
+        news_text = "BLOCKED 🔴"
 
 
     else:
 
+        news_text = str(news_status)
 
-        message += (
 
-            "📰 ECONOMIC NEWS FILTER\n\n"
+    # =====================================================
+    # SHORT BUY / SELL MESSAGE
+    # =====================================================
 
-            "ℹ️ Status: Checking...\n\n"
+    if signal in ["BUY", "SELL"]:
+
+        message = (
+
+            "🤖 SHEFIU AI FOREX VIP\n\n"
+
+            f"📊 {pair} — {signal}\n"
+
+            f"⏱ Timeframe: {timeframe}\n\n"
+
+            f"🎯 Entry: {entry}\n"
+
+            f"✅ TP: {take_profit}\n"
+
+            f"🛑 SL: {stop_loss}\n\n"
+
+            f"📈 Trend: {trend}\n"
+
+            f"📊 RSI: {rsi}\n"
+
+            f"🔥 Confidence: {confidence}%\n\n"
+
+            f"📰 News: {news_text}\n"
+
+            f"🕯 Pattern: {candlestick}"
 
         )
 
 
     # =====================================================
-    # ANALYSIS REASON
+    # SHORT NO TRADE MESSAGE
     # =====================================================
 
-    message += (
+    else:
 
-        "📝 ANALYSIS\n\n"
+        reason = result.get(
+            "reason",
+            "Waiting for a stronger setup."
+        )
 
-        f"{reason}\n\n"
 
-        "━━━━━━━━━━━━━━━━━━━━\n"
+        message = (
 
-        "⚠️ Risk Warning\n"
-        "No trading system guarantees profit.\n"
+            "🤖 SHEFIU AI FOREX VIP\n\n"
 
-        "🤖 SHEFIU AI FOREX VIP"
+            f"📊 {pair}\n"
 
-    )
+            f"⚪ Signal: NO TRADE\n"
+
+            f"⏱ Timeframe: {timeframe}\n\n"
+
+            f"📈 Trend: {trend}\n"
+
+            f"📊 RSI: {rsi}\n"
+
+            f"🕯 Pattern: {candlestick}\n"
+
+            f"📰 News: {news_text}\n\n"
+
+            f"📝 {reason}"
+
+        )
 
 
     return message
@@ -623,16 +491,12 @@ def run_telegram_bot():
                 ).strip().upper()
 
 
-                # =================================================
+                # =============================================
                 # MANUAL FOREX PAIR REQUEST
-                # =================================================
+                # =============================================
 
                 if text in FOREX_PAIRS:
 
-
-                    # =============================================
-                    # CHECK CACHE FIRST
-                    # =============================================
 
                     cached_result = get_cached_signal(
                         text
@@ -646,8 +510,7 @@ def run_telegram_bot():
 
                             chat_id,
 
-                            "📋 Showing recent analysis for "
-                            f"{text}..."
+                            f"📋 Recent analysis for {text}"
 
                         )
 
@@ -666,10 +529,6 @@ def run_telegram_bot():
                         continue
 
 
-                    # =============================================
-                    # CHECK COOLDOWN
-                    # =============================================
-
                     allowed, remaining = (
                         can_make_manual_request(
                             chat_id
@@ -684,11 +543,8 @@ def run_telegram_bot():
 
                             chat_id,
 
-                            "⏳ Please wait "
-                            f"{remaining} seconds before "
-                            "requesting another analysis.\n\n"
-                            "🤖 Automatic scanning is "
-                            "still running."
+                            f"⏳ Please wait "
+                            f"{remaining} seconds."
 
                         )
 
@@ -696,18 +552,11 @@ def run_telegram_bot():
                         continue
 
 
-                    # =============================================
-                    # ANALYZE PAIR
-                    # =============================================
-
                     send_message(
 
                         chat_id,
 
-                        f"🔍 Analyzing {text}...\n\n"
-                        "🕯 Checking candlestick pattern...\n"
-                        "📊 Checking market levels...\n"
-                        "📈 Checking trend and momentum..."
+                        f"🔍 Analyzing {text}..."
 
                     )
 
@@ -749,15 +598,14 @@ def run_telegram_bot():
                             chat_id,
 
                             "❌ Error analyzing this pair.\n\n"
-                            "Please wait about one minute "
-                            "and try again."
+                            "Please try again later."
 
                         )
 
 
-                # =================================================
+                # =============================================
                 # START COMMAND
-                # =================================================
+                # =============================================
 
                 elif text == "/START":
 
@@ -769,29 +617,13 @@ def run_telegram_bot():
 
                     welcome = (
 
-                        "╔════════════════════╗\n"
-                        "🤖 SHEFIU AI FOREX VIP\n"
-                        "╚════════════════════╝\n\n"
+                        "🤖 SHEFIU AI FOREX VIP\n\n"
 
-                        "📊 PROFESSIONAL FOREX ANALYSIS\n\n"
-
-                        "Send any pair below:\n\n"
+                        "📊 Send any Forex pair below:\n\n"
 
                         f"{pairs_text}\n\n"
 
                         f"⏱ Timeframe: {TIMEFRAME}\n\n"
-
-                        "🕯 Candlestick Analysis: ACTIVE\n"
-
-                        "📊 Support & Resistance: ACTIVE\n"
-
-                        "📈 EMA Trend Analysis: ACTIVE\n"
-
-                        "📊 RSI Confirmation: ACTIVE\n"
-
-                        "🛡 Economic News Filter: ACTIVE\n\n"
-
-                        "━━━━━━━━━━━━━━━━━━━━\n\n"
 
                         "Example:\n"
                         "EUR/USD"
@@ -805,9 +637,9 @@ def run_telegram_bot():
                     )
 
 
-                # =================================================
+                # =============================================
                 # HELP COMMAND
-                # =================================================
+                # =============================================
 
                 elif text == "/HELP":
 
@@ -816,23 +648,21 @@ def run_telegram_bot():
 
                         chat_id,
 
-                        "🤖 SHEFIU AI FOREX VIP HELP\n\n"
+                        "🤖 SHEFIU AI FOREX VIP\n\n"
 
-                        "Simply send a Forex pair.\n\n"
+                        "Send a Forex pair to analyze.\n\n"
 
                         "Example:\n"
                         "EUR/USD\n"
                         "GBP/USD\n"
                         "XAU/USD\n\n"
 
-                        "The bot will analyze:\n\n"
+                        "The bot checks:\n"
 
-                        "🕯 Candlestick patterns\n"
-                        "📈 Market trend\n"
+                        "📈 Trend\n"
                         "📊 RSI\n"
-                        "🟢 Support\n"
-                        "🔴 Resistance\n"
-                        "📰 Economic news\n"
+                        "🕯 Candlestick\n"
+                        "📰 Economic News\n"
                         "🎯 Entry / TP / SL"
 
                     )
