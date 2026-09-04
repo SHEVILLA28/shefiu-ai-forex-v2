@@ -6,6 +6,12 @@ from signals import get_signal
 
 
 # =========================================================
+# SHEFIU AI FOREX V2
+# PROFESSIONAL VIP TELEGRAM BOT
+# =========================================================
+
+
+# =========================================================
 # FOREX PAIRS
 # =========================================================
 
@@ -71,24 +77,17 @@ def send_message(chat_id, text):
 
 
     data = {
-
         "chat_id": chat_id,
-
         "text": text
-
     }
 
 
     try:
 
         response = requests.post(
-
             url,
-
             data=data,
-
             timeout=30
-
         )
 
 
@@ -96,6 +95,14 @@ def send_message(chat_id, text):
             f"Telegram status: "
             f"{response.status_code}"
         )
+
+
+        if not response.ok:
+
+            print(
+                f"Telegram response: "
+                f"{response.text}"
+            )
 
 
         return response.ok
@@ -117,9 +124,9 @@ def send_message(chat_id, text):
 def format_signal(result):
 
 
-    # =============================================
-    # BASIC SIGNAL INFORMATION
-    # =============================================
+    # =====================================================
+    # BASIC INFORMATION
+    # =====================================================
 
     signal = result.get(
         "signal",
@@ -151,9 +158,15 @@ def format_signal(result):
     )
 
 
-    # =============================================
+    confidence = result.get(
+        "confidence",
+        0
+    )
+
+
+    # =====================================================
     # SIGNAL ICON
-    # =============================================
+    # =====================================================
 
     if signal == "BUY":
 
@@ -170,30 +183,34 @@ def format_signal(result):
         icon = "⚪"
 
 
-    # =============================================
+    # =====================================================
     # START MESSAGE
-    # =============================================
+    # =====================================================
 
     message = (
 
-        "🤖 SHEFIU AI FOREX V2\n\n"
+        "╔════════════════════╗\n"
+        "🤖 SHEFIU AI FOREX VIP\n"
+        "╚════════════════════╝\n\n"
 
-        f"📊 Pair: {pair}\n\n"
+        f"📊 PAIR: {pair}\n\n"
 
         f"{icon} SIGNAL: {signal}\n\n"
 
-        f"⏱ Timeframe: {timeframe}\n\n"
+        f"⏱ TIMEFRAME: {timeframe}\n\n"
 
     )
 
 
-    # =============================================
+    # =====================================================
     # ENTRY / TP / SL
-    # =============================================
+    # =====================================================
 
     if signal in ["BUY", "SELL"]:
 
         message += (
+
+            "💰 TRADE SETUP\n\n"
 
             f"🎯 Entry: "
             f"{result.get('entry', 'N/A')}\n"
@@ -207,9 +224,9 @@ def format_signal(result):
         )
 
 
-    # =============================================
+    # =====================================================
     # SUPPORT AND RESISTANCE
-    # =============================================
+    # =====================================================
 
     support = result.get(
         "support",
@@ -234,19 +251,75 @@ def format_signal(result):
     )
 
 
-    # =============================================
-    # TREND / RSI / CONFIDENCE
-    # =============================================
+    # =====================================================
+    # CANDLESTICK ANALYSIS
+    # =====================================================
+
+    candlestick = result.get(
+        "candlestick",
+        "N/A"
+    )
+
+
+    candle_icon = "🕯"
+
+
+    if candlestick in [
+
+        "BULLISH ENGULFING",
+        "HAMMER"
+
+    ]:
+
+        candle_status = "🟢 BULLISH CONFIRMATION"
+
+
+    elif candlestick in [
+
+        "BEARISH ENGULFING",
+        "SHOOTING STAR"
+
+    ]:
+
+        candle_status = "🔴 BEARISH CONFIRMATION"
+
+
+    elif candlestick == "NONE":
+
+        candle_status = "⚪ NO STRONG PATTERN"
+
+
+    else:
+
+        candle_status = "ℹ️ WAITING"
+
 
     message += (
 
-        f"📈 Trend: {trend}\n\n"
+        "🕯 CANDLESTICK ANALYSIS\n\n"
+
+        f"{candle_icon} Pattern: {candlestick}\n"
+
+        f"{candle_status}\n\n"
+
+    )
+
+
+    # =====================================================
+    # TREND / RSI / CONFIDENCE
+    # =====================================================
+
+    message += (
+
+        "📈 MARKET ANALYSIS\n\n"
+
+        f"📈 Trend: {trend}\n"
 
         f"📊 RSI: "
         f"{result.get('rsi', 'N/A')}\n"
 
         f"🔥 Confidence: "
-        f"{result.get('confidence', 0)}%\n\n"
+        f"{confidence}%\n\n"
 
     )
 
@@ -262,39 +335,16 @@ def format_signal(result):
 
 
     news_reason = result.get(
-        "news_reason",
+        "news_message",
         None
     )
 
-
-    # Try alternative names if signals.py uses them
-
-    if news_status is None:
-
-        news_status = result.get(
-            "news_filter",
-            None
-        )
-
-
-    if news_reason is None:
-
-        news_reason = result.get(
-            "news_message",
-            None
-        )
-
-
-    # ---------------------------------------------
-    # SAFE NEWS STATUS
-    # ---------------------------------------------
 
     if news_status in [
 
         "SAFE",
         "CLEAR",
-        "NO_HIGH_IMPACT_NEWS",
-        True
+        "NO_HIGH_IMPACT_NEWS"
 
     ]:
 
@@ -311,15 +361,10 @@ def format_signal(result):
         )
 
 
-    # ---------------------------------------------
-    # NEWS BLOCKED
-    # ---------------------------------------------
-
     elif news_status in [
 
         "BLOCKED",
-        "HIGH_IMPACT_NEWS",
-        False
+        "HIGH_IMPACT_NEWS"
 
     ]:
 
@@ -328,7 +373,7 @@ def format_signal(result):
 
             "📰 ECONOMIC NEWS FILTER\n\n"
 
-            "🔴 Status: NEWS BLOCKED\n"
+            "🔴 Status: NEWS BLOCKED\n\n"
 
         )
 
@@ -342,20 +387,6 @@ def format_signal(result):
             )
 
 
-        else:
-
-            message += (
-
-                "⚠️ High-impact economic news "
-                "may affect this market.\n\n"
-
-            )
-
-
-    # ---------------------------------------------
-    # CUSTOM NEWS MESSAGE
-    # ---------------------------------------------
-
     elif news_status:
 
 
@@ -363,7 +394,7 @@ def format_signal(result):
 
             "📰 ECONOMIC NEWS FILTER\n\n"
 
-            f"ℹ️ Status: {news_status}\n"
+            f"ℹ️ Status: {news_status}\n\n"
 
         )
 
@@ -372,17 +403,10 @@ def format_signal(result):
 
             message += (
 
-                f"📝 {news_reason}\n"
+                f"📝 {news_reason}\n\n"
 
             )
 
-
-        message += "\n"
-
-
-    # ---------------------------------------------
-    # NEWS STATUS NOT AVAILABLE
-    # ---------------------------------------------
 
     else:
 
@@ -391,21 +415,27 @@ def format_signal(result):
 
             "📰 ECONOMIC NEWS FILTER\n\n"
 
-            "ℹ️ Status: Checking economic news...\n\n"
+            "ℹ️ Status: Checking...\n\n"
 
         )
 
 
-    # =============================================
-    # REASON
-    # =============================================
+    # =====================================================
+    # ANALYSIS REASON
+    # =====================================================
 
     message += (
 
-        f"📝 Reason: {reason}\n\n"
+        "📝 ANALYSIS\n\n"
 
-        "⚠️ Signal only. "
-        "No guaranteed profit."
+        f"{reason}\n\n"
+
+        "━━━━━━━━━━━━━━━━━━━━\n"
+
+        "⚠️ Risk Warning\n"
+        "No trading system guarantees profit.\n"
+
+        "🤖 SHEFIU AI FOREX VIP"
 
     )
 
@@ -464,7 +494,6 @@ def get_cached_signal(pair):
 
     result = cached["result"]
 
-
     saved_time = cached["time"]
 
 
@@ -511,19 +540,25 @@ def run_telegram_bot():
         try:
 
 
+            if not BOT_TOKEN:
+
+                print(
+                    "BOT_TOKEN is missing."
+                )
+
+                time.sleep(10)
+
+                continue
+
+
             url = (
-
                 f"https://api.telegram.org/bot"
-
                 f"{BOT_TOKEN}/getUpdates"
-
             )
 
 
             params = {
-
                 "timeout": 30
-
             }
 
 
@@ -533,13 +568,9 @@ def run_telegram_bot():
 
 
             response = requests.get(
-
                 url,
-
                 params=params,
-
                 timeout=40
-
             )
 
 
@@ -550,7 +581,8 @@ def run_telegram_bot():
 
 
                 print(
-                    "Telegram getUpdates error"
+                    "Telegram getUpdates error:",
+                    data
                 )
 
 
@@ -570,39 +602,37 @@ def run_telegram_bot():
                 )
 
 
-                message = update.get(
+                telegram_message = update.get(
                     "message"
                 )
 
 
-                if not message:
+                if not telegram_message:
 
                     continue
 
 
-                chat_id = message[
+                chat_id = telegram_message[
                     "chat"
                 ]["id"]
 
 
-                text = message.get(
-
+                text = telegram_message.get(
                     "text",
                     ""
-
                 ).strip().upper()
 
 
-                # =========================================
+                # =================================================
                 # MANUAL FOREX PAIR REQUEST
-                # =========================================
+                # =================================================
 
                 if text in FOREX_PAIRS:
 
 
-                    # =====================================
+                    # =============================================
                     # CHECK CACHE FIRST
-                    # =====================================
+                    # =============================================
 
                     cached_result = get_cached_signal(
                         text
@@ -622,16 +652,13 @@ def run_telegram_bot():
                         )
 
 
-                        signal_message = format_signal(
-                            cached_result
-                        )
-
-
                         send_message(
 
                             chat_id,
 
-                            signal_message
+                            format_signal(
+                                cached_result
+                            )
 
                         )
 
@@ -639,9 +666,9 @@ def run_telegram_bot():
                         continue
 
 
-                    # =====================================
+                    # =============================================
                     # CHECK COOLDOWN
-                    # =====================================
+                    # =============================================
 
                     allowed, remaining = (
                         can_make_manual_request(
@@ -659,8 +686,9 @@ def run_telegram_bot():
 
                             "⏳ Please wait "
                             f"{remaining} seconds before "
-                            "requesting another manual analysis.\n\n"
-                            "🤖 Automatic scanning is still running."
+                            "requesting another analysis.\n\n"
+                            "🤖 Automatic scanning is "
+                            "still running."
 
                         )
 
@@ -668,15 +696,18 @@ def run_telegram_bot():
                         continue
 
 
-                    # =====================================
+                    # =============================================
                     # ANALYZE PAIR
-                    # =====================================
+                    # =============================================
 
                     send_message(
 
                         chat_id,
 
-                        f"🔍 Analyzing {text}..."
+                        f"🔍 Analyzing {text}...\n\n"
+                        "🕯 Checking candlestick pattern...\n"
+                        "📊 Checking market levels...\n"
+                        "📈 Checking trend and momentum..."
 
                     )
 
@@ -685,28 +716,13 @@ def run_telegram_bot():
 
 
                         result = get_signal(
-
                             text,
-
                             TIMEFRAME
-
                         )
 
-
-                        # =================================
-                        # SAVE RESULT
-                        # =================================
 
                         save_signal_to_cache(
-
                             text,
-
-                            result
-
-                        )
-
-
-                        signal_message = format_signal(
                             result
                         )
 
@@ -715,7 +731,7 @@ def run_telegram_bot():
 
                             chat_id,
 
-                            signal_message
+                            format_signal(result)
 
                         )
 
@@ -739,9 +755,9 @@ def run_telegram_bot():
                         )
 
 
-                # =========================================
+                # =================================================
                 # START COMMAND
-                # =========================================
+                # =================================================
 
                 elif text == "/START":
 
@@ -753,30 +769,71 @@ def run_telegram_bot():
 
                     welcome = (
 
-                        "🤖 SHEFIU AI FOREX V2\n\n"
+                        "╔════════════════════╗\n"
+                        "🤖 SHEFIU AI FOREX VIP\n"
+                        "╚════════════════════╝\n\n"
 
-                        "Send me any Forex pair below "
-                        "for manual analysis:\n\n"
+                        "📊 PROFESSIONAL FOREX ANALYSIS\n\n"
+
+                        "Send any pair below:\n\n"
 
                         f"{pairs_text}\n\n"
 
                         f"⏱ Timeframe: {TIMEFRAME}\n\n"
 
-                        "📰 Economic News Filter: ACTIVE\n\n"
+                        "🕯 Candlestick Analysis: ACTIVE\n"
 
-                        "📊 Support and Resistance: ACTIVE\n\n"
+                        "📊 Support & Resistance: ACTIVE\n"
 
-                        "⏳ Manual requests are protected "
-                        "to prevent API rate limits."
+                        "📈 EMA Trend Analysis: ACTIVE\n"
+
+                        "📊 RSI Confirmation: ACTIVE\n"
+
+                        "🛡 Economic News Filter: ACTIVE\n\n"
+
+                        "━━━━━━━━━━━━━━━━━━━━\n\n"
+
+                        "Example:\n"
+                        "EUR/USD"
 
                     )
+
+
+                    send_message(
+                        chat_id,
+                        welcome
+                    )
+
+
+                # =================================================
+                # HELP COMMAND
+                # =================================================
+
+                elif text == "/HELP":
 
 
                     send_message(
 
                         chat_id,
 
-                        welcome
+                        "🤖 SHEFIU AI FOREX VIP HELP\n\n"
+
+                        "Simply send a Forex pair.\n\n"
+
+                        "Example:\n"
+                        "EUR/USD\n"
+                        "GBP/USD\n"
+                        "XAU/USD\n\n"
+
+                        "The bot will analyze:\n\n"
+
+                        "🕯 Candlestick patterns\n"
+                        "📈 Market trend\n"
+                        "📊 RSI\n"
+                        "🟢 Support\n"
+                        "🔴 Resistance\n"
+                        "📰 Economic news\n"
+                        "🎯 Entry / TP / SL"
 
                     )
 
