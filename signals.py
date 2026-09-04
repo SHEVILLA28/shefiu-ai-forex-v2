@@ -298,13 +298,9 @@ def calculate_rsi(series, period=14):
 
     delta = series.diff()
 
-    gain = delta.clip(
-        lower=0
-    )
+    gain = delta.clip(lower=0)
 
-    loss = -delta.clip(
-        upper=0
-    )
+    loss = -delta.clip(upper=0)
 
 
     avg_gain = gain.rolling(
@@ -370,9 +366,7 @@ def calculate_atr(df, period=14):
             low_close
         ],
         axis=1
-    ).max(
-        axis=1
-    )
+    ).max(axis=1)
 
 
     return true_range.rolling(
@@ -386,10 +380,7 @@ def calculate_atr(df, period=14):
 
 def calculate_support_resistance(df, lookback=50):
 
-    recent_data = df.tail(
-        lookback
-    )
-
+    recent_data = df.tail(lookback)
 
     support = recent_data["low"].min()
 
@@ -490,8 +481,7 @@ def get_signal(pair, timeframe="5M"):
             ),
             "reason": news_info.get(
                 "message",
-                "High-impact economic news is affecting "
-                "this Forex pair. Trading is temporarily paused."
+                "Trading temporarily paused."
             )
         }
 
@@ -540,18 +530,15 @@ def get_signal(pair, timeframe="5M"):
             20
         )
 
-
         df["ema_50"] = calculate_ema(
             df["close"],
             50
         )
 
-
         df["rsi"] = calculate_rsi(
             df["close"],
             14
         )
-
 
         df["atr"] = calculate_atr(
             df,
@@ -610,7 +597,9 @@ def get_signal(pair, timeframe="5M"):
                 "message",
                 "Economic news status unavailable."
             ),
-            "reason": f"Indicator calculation error: {e}"
+            "reason": (
+                f"Indicator calculation error: {e}"
+            )
         }
 
 
@@ -665,35 +654,23 @@ def get_signal(pair, timeframe="5M"):
     # SUPPORT / RESISTANCE DISTANCE
     # =====================================================
 
-    distance_to_support = (
-        close - support
-    )
+    distance_to_support = close - support
 
-
-    distance_to_resistance = (
-        resistance - close
-    )
+    distance_to_resistance = resistance - close
 
 
     # =====================================================
     # BUY CONDITIONS
     # =====================================================
 
-    bullish_price = (
-        close > ema_20
-    )
+    bullish_price = close > ema_20
 
-
-    bullish_momentum = (
-        close > previous_close
-    )
-
+    bullish_momentum = close > previous_close
 
     bullish_rsi = (
         rsi >= 45
         and rsi <= 70
     )
-
 
     buy_safe_from_resistance = (
         distance_to_resistance >= atr * 1.0
@@ -711,32 +688,28 @@ def get_signal(pair, timeframe="5M"):
         entry = close
 
 
-        # STOP LOSS REMAINS ATR x 1.5
+        # =================================================
+        # STOP LOSS
+        # =================================================
 
-        stop_loss = (
-            close - (atr * 1.5)
-        )
+        stop_loss = close - (atr * 1.5)
 
 
-        # TAKE PROFIT INCREASED TO ATR x 2.5
+        # =================================================
+        # INCREASED TAKE PROFIT
+        # ATR × 3.0
+        # =================================================
 
-        take_profit = (
-            close + (atr * 2.5)
-        )
+        take_profit = close + (atr * 3.0)
 
 
         confidence = 70
 
-
         if rsi >= 50:
-
             confidence += 10
 
-
         if rsi >= 55:
-
             confidence += 5
-
 
         confidence += 5
 
@@ -761,8 +734,8 @@ def get_signal(pair, timeframe="5M"):
             "reason": (
                 "Bullish trend confirmed by EMA 20 "
                 "above EMA 50, price above EMA 20, "
-                "positive momentum, bullish RSI and "
-                "safe distance from resistance."
+                "positive momentum and bullish RSI. "
+                "Take Profit has been increased."
             )
         }
 
@@ -771,21 +744,14 @@ def get_signal(pair, timeframe="5M"):
     # SELL CONDITIONS
     # =====================================================
 
-    bearish_price = (
-        close < ema_20
-    )
+    bearish_price = close < ema_20
 
-
-    bearish_momentum = (
-        close < previous_close
-    )
-
+    bearish_momentum = close < previous_close
 
     bearish_rsi = (
         rsi >= 30
         and rsi <= 55
     )
-
 
     sell_safe_from_support = (
         distance_to_support >= atr * 1.0
@@ -803,32 +769,28 @@ def get_signal(pair, timeframe="5M"):
         entry = close
 
 
-        # STOP LOSS REMAINS ATR x 1.5
+        # =================================================
+        # STOP LOSS
+        # =================================================
 
-        stop_loss = (
-            close + (atr * 1.5)
-        )
+        stop_loss = close + (atr * 1.5)
 
 
-        # TAKE PROFIT INCREASED TO ATR x 2.5
+        # =================================================
+        # INCREASED TAKE PROFIT
+        # ATR × 3.0
+        # =================================================
 
-        take_profit = (
-            close - (atr * 2.5)
-        )
+        take_profit = close - (atr * 3.0)
 
 
         confidence = 70
 
-
         if rsi <= 50:
-
             confidence += 10
 
-
         if rsi <= 45:
-
             confidence += 5
-
 
         confidence += 5
 
@@ -853,8 +815,8 @@ def get_signal(pair, timeframe="5M"):
             "reason": (
                 "Bearish trend confirmed by EMA 20 "
                 "below EMA 50, price below EMA 20, "
-                "negative momentum, bearish RSI and "
-                "safe distance from support."
+                "negative momentum and bearish RSI. "
+                "Take Profit has been increased."
             )
         }
 
@@ -871,7 +833,6 @@ def get_signal(pair, timeframe="5M"):
             "entry."
         )
 
-
     elif trend == "SELL" and not sell_safe_from_support:
 
         reason = (
@@ -879,7 +840,6 @@ def get_signal(pair, timeframe="5M"):
             "close to support. Waiting for a safer "
             "entry."
         )
-
 
     elif trend == "BUY":
 
@@ -889,7 +849,6 @@ def get_signal(pair, timeframe="5M"):
             "all strong enough yet."
         )
 
-
     elif trend == "SELL":
 
         reason = (
@@ -897,7 +856,6 @@ def get_signal(pair, timeframe="5M"):
             "momentum and RSI confirmation are not "
             "all strong enough yet."
         )
-
 
     else:
 
@@ -925,4 +883,4 @@ def get_signal(pair, timeframe="5M"):
             "Economic news status unavailable."
         ),
         "reason": reason
-        }
+            }
