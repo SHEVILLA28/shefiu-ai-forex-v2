@@ -8,7 +8,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 import requests
 
 from config import BOT_TOKEN, CHAT_ID
-from telegram_bot import run_telegram_bot, format_signal
+from telegram_bot import format_signal
 from signals import get_signal
 
 from metaapi_trader import (
@@ -656,7 +656,6 @@ def run_automatic_scanner():
 
                     if signal in ["BUY", "SELL"]:
 
-
                         previous_signal = (
                             LAST_SIGNAL.get(
                                 pair
@@ -699,9 +698,7 @@ def run_automatic_scanner():
 
                             if trade_success:
 
-                                LAST_SIGNAL[pair] = (
-                                    signal
-                                )
+                                LAST_SIGNAL[pair] = signal
 
 
                                 print(
@@ -758,48 +755,6 @@ def run_automatic_scanner():
                                 )
 
 
-                                if trade_status == (
-                                    "MAX_TRADES_REACHED"
-                                ):
-
-                                    print(
-                                        "Maximum trade "
-                                        "protection is active."
-                                    )
-
-
-                                elif trade_status == (
-                                    "SYMBOL_ALREADY_OPEN"
-                                ):
-
-                                    print(
-                                        f"{pair} already has "
-                                        "an open trade."
-                                    )
-
-
-                                elif trade_status == (
-                                    "TRADE_COOLDOWN"
-                                ):
-
-                                    print(
-                                        "Trade cooldown "
-                                        "protection is active."
-                                    )
-
-
-                                elif trade_status == (
-                                    "POSITION_CHECK_FAILED"
-                                ):
-
-                                    print(
-                                        "Safety protection "
-                                        "blocked trade because "
-                                        "positions could not "
-                                        "be checked."
-                                    )
-
-
                     # =====================================
                     # NO TRADE
                     # =====================================
@@ -822,7 +777,6 @@ def run_automatic_scanner():
                         f"Scanner error for "
                         f"{pair}: {e}"
                     )
-
 
                     time.sleep(3)
 
@@ -908,22 +862,6 @@ if __name__ == "__main__":
 
     print(
         "Health server started."
-    )
-
-
-    # =====================================================
-    # START TELEGRAM BOT
-    # =====================================================
-
-    telegram_thread = threading.Thread(
-        target=run_telegram_bot,
-        daemon=True
-    )
-
-    telegram_thread.start()
-
-    print(
-        "Manual Telegram bot started."
     )
 
 
