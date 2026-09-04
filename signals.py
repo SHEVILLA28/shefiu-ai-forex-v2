@@ -453,8 +453,7 @@ def get_signal(pair, timeframe="5M"):
             "blocked": False,
             "status": "UNKNOWN",
             "message": (
-                "Economic news filter could not be "
-                "checked."
+                "Economic news filter could not be checked."
             ),
             "currency": None,
             "event": None
@@ -484,23 +483,15 @@ def get_signal(pair, timeframe="5M"):
             "trend": "WAIT",
             "rsi": "N/A",
             "confidence": 0,
-
-            "news_status": news_info.get(
-                "status",
-                "BLOCKED"
-            ),
-
+            "news_status": news_info.get("status", "BLOCKED"),
             "news_message": news_info.get(
                 "message",
                 "High-impact economic news detected."
             ),
-
-            "reason": (
-                news_info.get(
-                    "message",
-                    "High-impact economic news is affecting "
-                    "this Forex pair. Trading is temporarily paused."
-                )
+            "reason": news_info.get(
+                "message",
+                "High-impact economic news is affecting "
+                "this Forex pair. Trading is temporarily paused."
             )
         }
 
@@ -529,17 +520,11 @@ def get_signal(pair, timeframe="5M"):
             "trend": "WAIT",
             "rsi": "N/A",
             "confidence": 0,
-
-            "news_status": news_info.get(
-                "status",
-                "UNKNOWN"
-            ),
-
+            "news_status": news_info.get("status", "UNKNOWN"),
             "news_message": news_info.get(
                 "message",
                 "Economic news status unavailable."
             ),
-
             "reason": error_message
         }
 
@@ -591,34 +576,19 @@ def get_signal(pair, timeframe="5M"):
         previous = df.iloc[-2]
 
 
-        close = float(
-            latest["close"]
-        )
-
+        close = float(latest["close"])
 
         previous_close = float(
             previous["close"]
         )
 
+        ema_20 = float(latest["ema_20"])
 
-        ema_20 = float(
-            latest["ema_20"]
-        )
+        ema_50 = float(latest["ema_50"])
 
+        rsi = float(latest["rsi"])
 
-        ema_50 = float(
-            latest["ema_50"]
-        )
-
-
-        rsi = float(
-            latest["rsi"]
-        )
-
-
-        atr = float(
-            latest["atr"]
-        )
+        atr = float(latest["atr"])
 
 
     except Exception as e:
@@ -635,20 +605,12 @@ def get_signal(pair, timeframe="5M"):
             "trend": "WAIT",
             "rsi": "N/A",
             "confidence": 0,
-
-            "news_status": news_info.get(
-                "status",
-                "UNKNOWN"
-            ),
-
+            "news_status": news_info.get("status", "UNKNOWN"),
             "news_message": news_info.get(
                 "message",
                 "Economic news status unavailable."
             ),
-
-            "reason": (
-                f"Indicator calculation error: {e}"
-            )
+            "reason": f"Indicator calculation error: {e}"
         }
 
 
@@ -670,17 +632,11 @@ def get_signal(pair, timeframe="5M"):
             "trend": "WAIT",
             "rsi": "N/A",
             "confidence": 0,
-
-            "news_status": news_info.get(
-                "status",
-                "UNKNOWN"
-            ),
-
+            "news_status": news_info.get("status", "UNKNOWN"),
             "news_message": news_info.get(
                 "message",
                 "Economic news status unavailable."
             ),
-
             "reason": (
                 "Not enough data to calculate "
                 "technical indicators."
@@ -754,13 +710,18 @@ def get_signal(pair, timeframe="5M"):
 
         entry = close
 
+
+        # STOP LOSS REMAINS ATR x 1.5
+
         stop_loss = (
             close - (atr * 1.5)
         )
 
 
+        # TAKE PROFIT INCREASED TO ATR x 2.5
+
         take_profit = (
-            close + (atr * 2.0)
+            close + (atr * 2.5)
         )
 
 
@@ -792,17 +753,11 @@ def get_signal(pair, timeframe="5M"):
             "trend": "BUY",
             "rsi": round(rsi, 2),
             "confidence": confidence,
-
-            "news_status": news_info.get(
-                "status",
-                "UNKNOWN"
-            ),
-
+            "news_status": news_info.get("status", "UNKNOWN"),
             "news_message": news_info.get(
                 "message",
                 "Economic news status unavailable."
             ),
-
             "reason": (
                 "Bullish trend confirmed by EMA 20 "
                 "above EMA 50, price above EMA 20, "
@@ -848,13 +803,17 @@ def get_signal(pair, timeframe="5M"):
         entry = close
 
 
+        # STOP LOSS REMAINS ATR x 1.5
+
         stop_loss = (
             close + (atr * 1.5)
         )
 
 
+        # TAKE PROFIT INCREASED TO ATR x 2.5
+
         take_profit = (
-            close - (atr * 2.0)
+            close - (atr * 2.5)
         )
 
 
@@ -886,17 +845,11 @@ def get_signal(pair, timeframe="5M"):
             "trend": "SELL",
             "rsi": round(rsi, 2),
             "confidence": confidence,
-
-            "news_status": news_info.get(
-                "status",
-                "UNKNOWN"
-            ),
-
+            "news_status": news_info.get("status", "UNKNOWN"),
             "news_message": news_info.get(
                 "message",
                 "Economic news status unavailable."
             ),
-
             "reason": (
                 "Bearish trend confirmed by EMA 20 "
                 "below EMA 50, price below EMA 20, "
@@ -966,16 +919,10 @@ def get_signal(pair, timeframe="5M"):
         "trend": trend,
         "rsi": round(rsi, 2),
         "confidence": 0,
-
-        "news_status": news_info.get(
-            "status",
-            "UNKNOWN"
-        ),
-
+        "news_status": news_info.get("status", "UNKNOWN"),
         "news_message": news_info.get(
             "message",
             "Economic news status unavailable."
         ),
-
         "reason": reason
-    }
+        }
