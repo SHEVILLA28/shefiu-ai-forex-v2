@@ -5,6 +5,8 @@ import threading
 import requests
 import pandas as pd
 
+from news_filter import has_high_impact_news
+
 
 # =========================================================
 # TWELVE DATA SETTINGS
@@ -395,7 +397,6 @@ def calculate_support_resistance(df, lookback=50):
 
     support = recent_data["low"].min()
 
-
     resistance = recent_data["high"].max()
 
 
@@ -435,6 +436,48 @@ def format_price(price):
 # =========================================================
 
 def get_signal(pair, timeframe="5M"):
+
+
+    # =====================================================
+    # ECONOMIC NEWS FILTER
+    # =====================================================
+
+    try:
+
+        if has_high_impact_news(pair):
+
+            print(
+                f"Trading paused for {pair}: "
+                f"high-impact news detected."
+            )
+
+            return {
+                "pair": pair,
+                "timeframe": timeframe,
+                "signal": "NO TRADE",
+                "entry": "N/A",
+                "take_profit": "N/A",
+                "stop_loss": "N/A",
+                "support": "N/A",
+                "resistance": "N/A",
+                "trend": "WAIT",
+                "rsi": "N/A",
+                "confidence": 0,
+                "reason": (
+                    "High-impact economic news is affecting "
+                    "this Forex pair. Trading is temporarily paused."
+                )
+            }
+
+
+    except Exception as e:
+
+        # If the news service has a problem,
+        # continue to market analysis instead of crashing
+
+        print(
+            f"News filter check failed: {e}"
+        )
 
 
     # =====================================================
@@ -595,11 +638,9 @@ def get_signal(pair, timeframe="5M"):
 
         trend = "BUY"
 
-
     elif ema_20 < ema_50:
 
         trend = "SELL"
-
 
     else:
 
@@ -640,8 +681,6 @@ def get_signal(pair, timeframe="5M"):
     )
 
 
-    # Avoid buying too close to resistance
-
     buy_safe_from_resistance = (
         distance_to_resistance >= atr * 1.0
     )
@@ -656,7 +695,6 @@ def get_signal(pair, timeframe="5M"):
     ):
 
         entry = close
-
 
         stop_loss = (
             close - (atr * 1.5)
@@ -724,8 +762,6 @@ def get_signal(pair, timeframe="5M"):
         and rsi <= 55
     )
 
-
-    # Avoid selling too close to support
 
     sell_safe_from_support = (
         distance_to_support >= atr * 1.0
@@ -851,4 +887,4 @@ def get_signal(pair, timeframe="5M"):
         "rsi": round(rsi, 2),
         "confidence": 0,
         "reason": reason
-        }
+    }
