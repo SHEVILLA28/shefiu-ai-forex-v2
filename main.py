@@ -198,9 +198,9 @@ TIMEFRAME = "5M"
 # SCAN SETTINGS
 # =========================================================
 
-# Scan every 6 hours
+# Scan every 5 minutes
 
-SCAN_INTERVAL = 21600
+SCAN_INTERVAL = 300
 
 
 # =========================================================
@@ -249,11 +249,9 @@ def symbol_has_open_position(
             ""
         )
 
-
         if position_symbol.upper() == symbol.upper():
 
             return True
-
 
     return False
 
@@ -315,16 +313,13 @@ def check_trade_permission(symbol):
         )
 
 
-        # =============================================
         # MAXIMUM OPEN TRADES
-        # =============================================
 
         if open_trade_count >= MAX_OPEN_TRADES:
 
             print(
                 "Maximum open trade limit reached."
             )
-
 
             return (
                 False,
@@ -333,9 +328,7 @@ def check_trade_permission(symbol):
             )
 
 
-        # =============================================
         # SAME SYMBOL PROTECTION
-        # =============================================
 
         if symbol_has_open_position(
             positions,
@@ -347,7 +340,6 @@ def check_trade_permission(symbol):
                 "already has an open position."
             )
 
-
             return (
                 False,
                 "SYMBOL_ALREADY_OPEN",
@@ -355,9 +347,7 @@ def check_trade_permission(symbol):
             )
 
 
-        # =============================================
         # TRADE COOLDOWN
-        # =============================================
 
         cooldown_allowed, remaining = (
             check_trade_cooldown(
@@ -373,7 +363,6 @@ def check_trade_permission(symbol):
                 f"cooldown active for "
                 f"{remaining} more seconds."
             )
-
 
             return (
                 False,
@@ -394,7 +383,6 @@ def check_trade_permission(symbol):
         print(
             f"Error checking open trades: {e}"
         )
-
 
         return (
             False,
@@ -444,7 +432,6 @@ def execute_trade(result, pair):
             f"for {pair}: {e}"
         )
 
-
         return (
             False,
             "INVALID_SL_TP"
@@ -481,18 +468,17 @@ def execute_trade(result, pair):
             f"Trade permission denied: {status}"
         )
 
-
         return (
             False,
             status
         )
 
 
-    # =====================================================
-    # PLACE BUY ORDER
-    # =====================================================
-
     try:
+
+        # =================================================
+        # PLACE BUY ORDER
+        # =================================================
 
         if signal == "BUY":
 
@@ -579,7 +565,6 @@ def execute_trade(result, pair):
             f"{symbol}: {e}"
         )
 
-
         return (
             False,
             "TRADE_FAILED"
@@ -638,10 +623,8 @@ def run_automatic_scanner():
                     print(
                         f"Result for {pair}: "
                         f"{signal} | "
-                        f"Trend: "
-                        f"{result.get('trend')} | "
-                        f"RSI: "
-                        f"{result.get('rsi')} | "
+                        f"Trend: {result.get('trend')} | "
+                        f"RSI: {result.get('rsi')} | "
                         f"Confidence: "
                         f"{result.get('confidence')}%"
                     )
@@ -654,9 +637,7 @@ def run_automatic_scanner():
                     if signal in ["BUY", "SELL"]:
 
                         previous_signal = (
-                            LAST_SIGNAL.get(
-                                pair
-                            )
+                            LAST_SIGNAL.get(pair)
                         )
 
 
@@ -668,8 +649,7 @@ def run_automatic_scanner():
 
                             print(
                                 f"Duplicate {signal} "
-                                f"signal ignored for "
-                                f"{pair}"
+                                f"signal ignored for {pair}"
                             )
 
 
@@ -730,7 +710,6 @@ def run_automatic_scanner():
 
                                     f"🔒 Maximum Open Trades: "
                                     f"{MAX_OPEN_TRADES}"
-
                                 )
 
 
@@ -747,8 +726,7 @@ def run_automatic_scanner():
 
                                 print(
                                     f"Trade not placed for "
-                                    f"{pair}: "
-                                    f"{trade_status}"
+                                    f"{pair}: {trade_status}"
                                 )
 
 
@@ -798,6 +776,10 @@ def run_automatic_scanner():
             )
 
 
+        # =================================================
+        # WAIT BEFORE NEXT SCAN
+        # =================================================
+
         print(
             f"Waiting {SCAN_INTERVAL} "
             f"seconds before next scan..."
@@ -839,6 +821,11 @@ if __name__ == "__main__":
     print(
         f"Trade Cooldown: "
         f"{TRADE_COOLDOWN} seconds"
+    )
+
+    print(
+        f"Scan Interval: "
+        f"{SCAN_INTERVAL} seconds"
     )
 
     print(
