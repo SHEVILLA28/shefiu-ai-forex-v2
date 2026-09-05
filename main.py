@@ -153,22 +153,24 @@ FOREX_PAIRS = [
 
     "EUR/USD",
     "GBP/USD",
-    "AUD/USD",
-    "NZD/USD",
 
     "USD/JPY",
     "USD/CHF",
+
+    "AUD/USD",
     "USD/CAD",
 
-    "EUR/GBP",
-    "EUR/JPY",
-    "EUR/CHF",
+    "NZD/USD",
+    "XAU/USD",
 
-    "GBP/JPY",
-    "GBP/CHF",
+    "EUR/GBP",
+    "CHF/JPY",
 
     "AUD/JPY",
-    "NZD/JPY"
+    "EUR/JPY",
+
+    "GBP/JPY",
+    "USD/SGD"
 
 ]
 
@@ -249,9 +251,11 @@ def symbol_has_open_position(
             ""
         )
 
+
         if position_symbol.upper() == symbol.upper():
 
             return True
+
 
     return False
 
@@ -313,13 +317,14 @@ def check_trade_permission(symbol):
         )
 
 
-        # MAXIMUM OPEN TRADES
+        # Maximum open trades protection
 
         if open_trade_count >= MAX_OPEN_TRADES:
 
             print(
                 "Maximum open trade limit reached."
             )
+
 
             return (
                 False,
@@ -328,7 +333,7 @@ def check_trade_permission(symbol):
             )
 
 
-        # SAME SYMBOL PROTECTION
+        # Same symbol protection
 
         if symbol_has_open_position(
             positions,
@@ -340,6 +345,7 @@ def check_trade_permission(symbol):
                 "already has an open position."
             )
 
+
             return (
                 False,
                 "SYMBOL_ALREADY_OPEN",
@@ -347,7 +353,7 @@ def check_trade_permission(symbol):
             )
 
 
-        # TRADE COOLDOWN
+        # Trade cooldown protection
 
         cooldown_allowed, remaining = (
             check_trade_cooldown(
@@ -363,6 +369,7 @@ def check_trade_permission(symbol):
                 f"cooldown active for "
                 f"{remaining} more seconds."
             )
+
 
             return (
                 False,
@@ -384,6 +391,7 @@ def check_trade_permission(symbol):
             f"Error checking open trades: {e}"
         )
 
+
         return (
             False,
             "POSITION_CHECK_FAILED",
@@ -396,7 +404,6 @@ def check_trade_permission(symbol):
 # =========================================================
 
 def execute_trade(result, pair):
-
 
     signal = result.get(
         "signal",
@@ -414,15 +421,19 @@ def execute_trade(result, pair):
     )
 
 
+    if signal not in ["BUY", "SELL"]:
+
+        return (
+            False,
+            "INVALID_SIGNAL"
+        )
+
+
     try:
 
-        stop_loss = float(
-            stop_loss
-        )
+        stop_loss = float(stop_loss)
 
-        take_profit = float(
-            take_profit
-        )
+        take_profit = float(take_profit)
 
 
     except Exception as e:
@@ -431,6 +442,7 @@ def execute_trade(result, pair):
             f"Invalid Stop Loss or Take Profit "
             f"for {pair}: {e}"
         )
+
 
         return (
             False,
@@ -451,9 +463,7 @@ def execute_trade(result, pair):
     )
 
 
-    # =====================================================
-    # CHECK TRADE PROTECTION
-    # =====================================================
+    # Check trade protection
 
     allowed, status, open_trade_count = (
         check_trade_permission(
@@ -468,6 +478,7 @@ def execute_trade(result, pair):
             f"Trade permission denied: {status}"
         )
 
+
         return (
             False,
             status
@@ -476,9 +487,7 @@ def execute_trade(result, pair):
 
     try:
 
-        # =================================================
-        # PLACE BUY ORDER
-        # =================================================
+        # BUY ORDER
 
         if signal == "BUY":
 
@@ -503,20 +512,7 @@ def execute_trade(result, pair):
             )
 
 
-            LAST_TRADE_TIME[symbol] = (
-                time.time()
-            )
-
-
-            return (
-                True,
-                "TRADE_PLACED"
-            )
-
-
-        # =================================================
-        # PLACE SELL ORDER
-        # =================================================
+        # SELL ORDER
 
         elif signal == "SELL":
 
@@ -541,20 +537,14 @@ def execute_trade(result, pair):
             )
 
 
-            LAST_TRADE_TIME[symbol] = (
-                time.time()
-            )
-
-
-            return (
-                True,
-                "TRADE_PLACED"
-            )
+        LAST_TRADE_TIME[symbol] = (
+            time.time()
+        )
 
 
         return (
-            False,
-            "INVALID_SIGNAL"
+            True,
+            "TRADE_PLACED"
         )
 
 
@@ -564,6 +554,7 @@ def execute_trade(result, pair):
             f"Trade execution error for "
             f"{symbol}: {e}"
         )
+
 
         return (
             False,
@@ -623,8 +614,10 @@ def run_automatic_scanner():
                     print(
                         f"Result for {pair}: "
                         f"{signal} | "
-                        f"Trend: {result.get('trend')} | "
-                        f"RSI: {result.get('rsi')} | "
+                        f"Trend: "
+                        f"{result.get('trend')} | "
+                        f"RSI: "
+                        f"{result.get('rsi')} | "
                         f"Confidence: "
                         f"{result.get('confidence')}%"
                     )
@@ -637,19 +630,20 @@ def run_automatic_scanner():
                     if signal in ["BUY", "SELL"]:
 
                         previous_signal = (
-                            LAST_SIGNAL.get(pair)
+                            LAST_SIGNAL.get(
+                                pair
+                            )
                         )
 
 
-                        # =================================
-                        # DUPLICATE SIGNAL PROTECTION
-                        # =================================
+                        # Duplicate signal protection
 
                         if previous_signal == signal:
 
                             print(
                                 f"Duplicate {signal} "
-                                f"signal ignored for {pair}"
+                                f"signal ignored for "
+                                f"{pair}"
                             )
 
 
@@ -669,9 +663,9 @@ def run_automatic_scanner():
                             )
 
 
-                            # =============================
+                            # =================================
                             # TRADE SUCCESS
-                            # =============================
+                            # =================================
 
                             if trade_success:
 
@@ -710,6 +704,7 @@ def run_automatic_scanner():
 
                                     f"🔒 Maximum Open Trades: "
                                     f"{MAX_OPEN_TRADES}"
+
                                 )
 
 
@@ -718,15 +713,12 @@ def run_automatic_scanner():
                                 )
 
 
-                            # =============================
-                            # TRADE BLOCKED
-                            # =============================
-
                             else:
 
                                 print(
                                     f"Trade not placed for "
-                                    f"{pair}: {trade_status}"
+                                    f"{pair}: "
+                                    f"{trade_status}"
                                 )
 
 
@@ -739,9 +731,7 @@ def run_automatic_scanner():
                         LAST_SIGNAL[pair] = None
 
 
-                    # =====================================
-                    # API PROTECTION
-                    # =====================================
+                    # API protection
 
                     time.sleep(3)
 
@@ -775,10 +765,6 @@ def run_automatic_scanner():
                 f"Automatic scanner error: {e}"
             )
 
-
-        # =================================================
-        # WAIT BEFORE NEXT SCAN
-        # =================================================
 
         print(
             f"Waiting {SCAN_INTERVAL} "
@@ -833,9 +819,7 @@ if __name__ == "__main__":
     )
 
 
-    # =====================================================
-    # START HEALTH SERVER
-    # =====================================================
+    # Start health server
 
     health_thread = threading.Thread(
         target=run_health_server,
@@ -849,9 +833,7 @@ if __name__ == "__main__":
     )
 
 
-    # =====================================================
-    # START AUTOMATIC SCANNER
-    # =====================================================
+    # Start automatic scanner
 
     scanner_thread = threading.Thread(
         target=run_automatic_scanner,
@@ -865,9 +847,7 @@ if __name__ == "__main__":
     )
 
 
-    # =====================================================
-    # START MANUAL TELEGRAM BOT
-    # =====================================================
+    # Start manual Telegram bot
 
     telegram_thread = threading.Thread(
         target=run_telegram_bot,
@@ -881,9 +861,7 @@ if __name__ == "__main__":
     )
 
 
-    # =====================================================
-    # KEEP BOT RUNNING
-    # =====================================================
+    # Keep bot running
 
     while True:
 
