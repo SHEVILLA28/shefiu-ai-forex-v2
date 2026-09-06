@@ -394,6 +394,7 @@ def get_selected_timeframe(chat_id):
 
 # =========================================================
 # SET TIMEFRAME
+# FIXED VERSION
 # =========================================================
 
 def set_selected_timeframe(
@@ -419,28 +420,14 @@ def set_selected_timeframe(
         return False
 
 
+    # =============================================
+    # SAVE USER TIMEFRAME ONLY
+    #
+    # This does NOT automatically change the
+    # running Automatic Scanner timeframe.
+    # =============================================
+
     USER_TIMEFRAMES[chat_id] = timeframe
-
-
-    # =============================================
-    # IF AUTO MODE
-    # UPDATE AUTO TIMEFRAME
-    # =============================================
-
-    if get_user_mode(chat_id) == "AUTOMATIC":
-
-        settings = get_auto_settings()
-
-
-        set_auto_scan(
-
-            enabled=settings["enabled"],
-
-            timeframe=timeframe,
-
-            pairs=settings["pairs"]
-
-        )
 
 
     return True
@@ -518,9 +505,9 @@ def format_signal(result):
     )
 
 
-    # =============================================
+    # =====================================================
     # NEWS STATUS
-    # =============================================
+    # =====================================================
 
     if news_status in [
 
@@ -548,9 +535,9 @@ def format_signal(result):
         news_text = str(news_status)
 
 
-    # =============================================
+    # =====================================================
     # BUY / SELL
-    # =============================================
+    # =====================================================
 
     if signal in ["BUY", "SELL"]:
 
@@ -595,9 +582,9 @@ def format_signal(result):
         )
 
 
-    # =============================================
+    # =====================================================
     # NO TRADE
-    # =============================================
+    # =====================================================
 
     reason = result.get(
 
@@ -673,7 +660,7 @@ def can_make_manual_request(chat_id):
 
 
 # =========================================================
-# CACHE
+# SIGNAL CACHE
 # =========================================================
 
 def get_cached_signal(
@@ -820,13 +807,13 @@ def send_status(chat_id):
 
         f"👤 Current Mode: {mode}\n\n"
 
-        f"⏱ Your Timeframe: "
+        f"⏱ Your Selected Timeframe: "
         f"{timeframe}\n\n"
 
         f"🤖 Automatic Scanner: "
         f"{auto_status}\n\n"
 
-        f"⏱ Auto Timeframe: "
+        f"⏱ Auto Scanner Timeframe: "
         f"{settings['timeframe']}\n\n"
 
         "📊 Automatic Pairs:\n\n"
@@ -858,21 +845,26 @@ def send_help_message(chat_id):
         "🤖 SHEFIU AI FOREX HELP\n\n"
 
         "👤 MANUAL MODE\n"
-        "Press MANUAL, choose timeframe, "
-        "then press a pair.\n\n"
+        "1️⃣ Press MANUAL\n"
+        "2️⃣ Choose TIMEFRAME\n"
+        "3️⃣ Press a Forex pair\n\n"
 
         "🤖 AUTOMATIC MODE\n"
         "1️⃣ Press AUTOMATIC\n"
         "2️⃣ Choose PAIRS\n"
-        "3️⃣ Press all pairs you want\n"
+        "3️⃣ Select Forex pairs\n"
         "4️⃣ Choose TIMEFRAME\n"
         "5️⃣ Press START AUTO\n\n"
 
         "⛔ STOP AUTO\n"
-        "Stops automatic scanning.\n\n"
+        "Stops the Automatic Scanner.\n\n"
 
         "📋 STATUS\n"
-        "Shows your current settings."
+        "Shows your current settings.\n\n"
+
+        "⚠️ Changing your selected timeframe "
+        "does not change a scanner that is "
+        "already running."
 
     )
 
@@ -900,9 +892,9 @@ def process_pair_request(
     mode = get_user_mode(chat_id)
 
 
-    # =============================================
+    # =====================================================
     # AUTOMATIC MODE
-    # =============================================
+    # =====================================================
 
     if mode == "AUTOMATIC":
 
@@ -919,6 +911,22 @@ def process_pair_request(
             remove_auto_pair(pair)
 
 
+            selected_pairs = get_auto_settings()[
+                "pairs"
+            ]
+
+
+            pairs_text = (
+
+                "\n".join(selected_pairs)
+
+                if selected_pairs
+
+                else "No pairs selected"
+
+            )
+
+
             send_message(
 
                 chat_id,
@@ -926,9 +934,8 @@ def process_pair_request(
                 f"➖ {pair} removed from "
                 "Automatic Scanner.\n\n"
 
-                f"📊 Selected pairs:\n"
-
-                f"{get_auto_settings()['pairs']}",
+                f"📊 Selected pairs:\n\n"
+                f"{pairs_text}",
 
                 get_pairs_keyboard()
 
@@ -948,12 +955,10 @@ def process_pair_request(
                 f"✅ {pair} added to "
                 "Automatic Scanner.\n\n"
 
-                "You can press more pairs.\n\n"
+                "You can select more pairs.\n\n"
 
                 "When finished:\n"
-
                 "🕐 Choose TIMEFRAME\n"
-
                 "▶️ Press START AUTO",
 
                 get_pairs_keyboard()
@@ -964,9 +969,9 @@ def process_pair_request(
         return
 
 
-    # =============================================
+    # =====================================================
     # MANUAL MODE
-    # =============================================
+    # =====================================================
 
     timeframe = get_selected_timeframe(
         chat_id
@@ -1136,9 +1141,9 @@ def run_telegram_bot():
                 continue
 
 
-            # =============================================
-            # GET UPDATES
-            # =============================================
+            # =================================================
+            # GET TELEGRAM UPDATES
+            # =================================================
 
             url = (
 
@@ -1181,9 +1186,9 @@ def run_telegram_bot():
             data = response.json()
 
 
-            # =============================================
+            # =================================================
             # PROCESS UPDATES
-            # =============================================
+            # =================================================
 
             for update in data.get(
                 "result",
@@ -1255,9 +1260,9 @@ def run_telegram_bot():
                 )
 
 
-                # =========================================
+                # =============================================
                 # START / MENU
-                # =========================================
+                # =============================================
 
                 if command in [
 
@@ -1276,9 +1281,9 @@ def run_telegram_bot():
                     continue
 
 
-                # =========================================
+                # =============================================
                 # HELP
-                # =========================================
+                # =============================================
 
                 if command in [
 
@@ -1297,9 +1302,9 @@ def run_telegram_bot():
                     continue
 
 
-                # =========================================
+                # =============================================
                 # AUTOMATIC MODE
-                # =========================================
+                # =============================================
 
                 if upper_text == "🤖 AUTOMATIC":
 
@@ -1319,9 +1324,10 @@ def run_telegram_bot():
 
                         "🤖 AUTOMATIC MODE SELECTED\n\n"
 
-                        "Now press 📊 PAIRS and "
-                        "select all Forex pairs you "
-                        "want the bot to scan.",
+                        "1️⃣ Press 📊 PAIRS\n"
+                        "2️⃣ Select Forex pairs\n"
+                        "3️⃣ Choose 🕐 TIMEFRAME\n"
+                        "4️⃣ Press ▶️ START AUTO",
 
                         get_main_menu()
 
@@ -1331,9 +1337,9 @@ def run_telegram_bot():
                     continue
 
 
-                # =========================================
+                # =============================================
                 # MANUAL MODE
-                # =========================================
+                # =============================================
 
                 if upper_text == "👤 MANUAL":
 
@@ -1354,7 +1360,10 @@ def run_telegram_bot():
                         "👤 MANUAL MODE SELECTED\n\n"
 
                         "Choose a timeframe and "
-                        "press any Forex pair.",
+                        "press any Forex pair.\n\n"
+
+                        "The Automatic Scanner "
+                        "settings will not be changed.",
 
                         get_main_menu()
 
@@ -1364,9 +1373,9 @@ def run_telegram_bot():
                     continue
 
 
-                # =========================================
+                # =============================================
                 # PAIRS
-                # =========================================
+                # =============================================
 
                 if upper_text == "📊 PAIRS":
 
@@ -1394,9 +1403,9 @@ def run_telegram_bot():
                     continue
 
 
-                # =========================================
+                # =============================================
                 # CLEAR PAIRS
-                # =========================================
+                # =============================================
 
                 if upper_text == "🗑 CLEAR PAIRS":
 
@@ -1419,9 +1428,9 @@ def run_telegram_bot():
                     continue
 
 
-                # =========================================
+                # =============================================
                 # TIMEFRAME
-                # =========================================
+                # =============================================
 
                 if upper_text == "🕐 TIMEFRAME":
 
@@ -1443,9 +1452,9 @@ def run_telegram_bot():
                     continue
 
 
-                # =========================================
+                # =============================================
                 # TIMEFRAME BUTTON
-                # =========================================
+                # =============================================
 
                 if upper_text in [
 
@@ -1480,6 +1489,11 @@ def run_telegram_bot():
                     )
 
 
+                    mode = get_user_mode(
+                        chat_id
+                    )
+
+
                     send_message(
 
                         chat_id,
@@ -1487,8 +1501,13 @@ def run_telegram_bot():
                         f"✅ Timeframe selected: "
                         f"{timeframe}\n\n"
 
+                        f"Current Mode: {mode}\n\n"
+
                         "Your selection has been "
-                        "saved.",
+                        "saved.\n\n"
+
+                        "For Automatic mode, press "
+                        "▶️ START AUTO to apply it.",
 
                         get_main_menu()
 
@@ -1498,9 +1517,9 @@ def run_telegram_bot():
                     continue
 
 
-                # =========================================
+                # =============================================
                 # START AUTOMATIC
-                # =========================================
+                # =============================================
 
                 if upper_text == "▶️ START AUTO":
 
@@ -1577,9 +1596,9 @@ def run_telegram_bot():
                     continue
 
 
-                # =========================================
+                # =============================================
                 # STOP AUTOMATIC
-                # =========================================
+                # =============================================
 
                 if upper_text == "⛔ STOP AUTO":
 
@@ -1604,7 +1623,8 @@ def run_telegram_bot():
 
                         "⛔ AUTOMATIC SCANNER STOPPED\n\n"
 
-                        "Manual mode can still be used.",
+                        "👤 Manual mode can still "
+                        "be used.",
 
                         get_main_menu()
 
@@ -1614,9 +1634,9 @@ def run_telegram_bot():
                     continue
 
 
-                # =========================================
+                # =============================================
                 # STATUS
-                # =========================================
+                # =============================================
 
                 if command == "/STATUS" or (
                     upper_text == "📋 STATUS"
@@ -1629,9 +1649,9 @@ def run_telegram_bot():
                     continue
 
 
-                # =========================================
+                # =============================================
                 # FOREX PAIR
-                # =========================================
+                # =============================================
 
                 if upper_text in FOREX_PAIRS:
 
@@ -1648,9 +1668,9 @@ def run_telegram_bot():
                     continue
 
 
-                # =========================================
-                # UNKNOWN
-                # =========================================
+                # =============================================
+                # UNKNOWN COMMAND
+                # =============================================
 
                 send_message(
 
