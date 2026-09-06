@@ -5,10 +5,24 @@ import requests
 from config import BOT_TOKEN
 from signals import get_signal
 
+from bot_control import (
+
+    set_auto_scan,
+
+    get_auto_settings,
+
+    add_auto_pair,
+
+    remove_auto_pair,
+
+    clear_auto_pairs
+
+)
+
 
 # =========================================================
 # SHEFIU AI FOREX V2
-# PROFESSIONAL VIP TELEGRAM BOT
+# TELEGRAM CONTROL SYSTEM
 # =========================================================
 
 
@@ -43,6 +57,20 @@ FOREX_PAIRS = [
 
 
 # =========================================================
+# TIMEFRAMES
+# =========================================================
+
+VALID_TIMEFRAMES = [
+
+    "1M",
+    "2M",
+    "3M",
+    "5M"
+
+]
+
+
+# =========================================================
 # DEFAULT TIMEFRAME
 # =========================================================
 
@@ -50,10 +78,12 @@ TIMEFRAME = "5M"
 
 
 # =========================================================
-# USER TIMEFRAMES
+# USER SETTINGS
 # =========================================================
 
 USER_TIMEFRAMES = {}
+
+USER_MODES = {}
 
 
 # =========================================================
@@ -78,16 +108,25 @@ CACHE_DURATION = 60
 # SEND TELEGRAM MESSAGE
 # =========================================================
 
-def send_message(chat_id, text):
+def send_message(
+    chat_id,
+    text,
+    reply_markup=None
+):
 
     if not BOT_TOKEN:
 
-        print("❌ BOT_TOKEN is missing.")
+        print(
+            "❌ BOT_TOKEN is missing."
+        )
 
         return False
 
 
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    url = (
+        f"https://api.telegram.org/bot"
+        f"{BOT_TOKEN}/sendMessage"
+    )
 
 
     data = {
@@ -99,46 +138,312 @@ def send_message(chat_id, text):
     }
 
 
+    if reply_markup is not None:
+
+        data["reply_markup"] = json.dumps(
+            reply_markup
+        )
+
+
     try:
 
         response = requests.post(
+
             url,
+
             data=data,
+
             timeout=30
+
         )
 
 
         print(
-            f"Telegram status: {response.status_code}"
+            f"Telegram status: "
+            f"{response.status_code}"
         )
 
 
         if not response.ok:
 
             print(
-                f"Telegram response: {response.text}"
+                f"Telegram response: "
+                f"{response.text}"
             )
 
 
         return response.ok
 
 
-    except requests.RequestException as e:
-
-        print(
-            f"Telegram connection error: {e}"
-        )
-
-        return False
-
-
     except Exception as e:
 
         print(
-            f"Telegram error: {e}"
+            f"❌ Telegram error: {e}"
         )
 
         return False
+
+
+# =========================================================
+# MAIN MENU BUTTONS
+# =========================================================
+
+def get_main_menu():
+
+    return {
+
+        "keyboard": [
+
+            [
+
+                "🤖 AUTOMATIC",
+
+                "👤 MANUAL"
+
+            ],
+
+            [
+
+                "📊 PAIRS",
+
+                "🕐 TIMEFRAME"
+
+            ],
+
+            [
+
+                "▶️ START AUTO",
+
+                "⛔ STOP AUTO"
+
+            ],
+
+            [
+
+                "📋 STATUS",
+
+                "❓ HELP"
+
+            ]
+
+        ],
+
+        "resize_keyboard": True
+
+    }
+
+
+# =========================================================
+# FOREX PAIRS KEYBOARD
+# =========================================================
+
+def get_pairs_keyboard():
+
+    return {
+
+        "keyboard": [
+
+            [
+
+                "EUR/USD",
+
+                "GBP/USD"
+
+            ],
+
+            [
+
+                "USD/JPY",
+
+                "USD/CHF"
+
+            ],
+
+            [
+
+                "AUD/USD",
+
+                "USD/CAD"
+
+            ],
+
+            [
+
+                "NZD/USD",
+
+                "XAU/USD"
+
+            ],
+
+            [
+
+                "EUR/GBP",
+
+                "CHF/JPY"
+
+            ],
+
+            [
+
+                "AUD/JPY",
+
+                "EUR/JPY"
+
+            ],
+
+            [
+
+                "GBP/JPY",
+
+                "USD/SGD"
+
+            ],
+
+            [
+
+                "🗑 CLEAR PAIRS",
+
+                "🏠 MENU"
+
+            ]
+
+        ],
+
+        "resize_keyboard": True
+
+    }
+
+
+# =========================================================
+# TIMEFRAME KEYBOARD
+# =========================================================
+
+def get_timeframe_keyboard():
+
+    return {
+
+        "keyboard": [
+
+            [
+
+                "🕐 1M",
+
+                "🕐 2M"
+
+            ],
+
+            [
+
+                "🕐 3M",
+
+                "🕐 5M"
+
+            ],
+
+            [
+
+                "🏠 MENU"
+
+            ]
+
+        ],
+
+        "resize_keyboard": True
+
+    }
+
+
+# =========================================================
+# GET USER MODE
+# =========================================================
+
+def get_user_mode(chat_id):
+
+    return USER_MODES.get(
+        chat_id,
+        "MANUAL"
+    )
+
+
+# =========================================================
+# SET USER MODE
+# =========================================================
+
+def set_user_mode(
+    chat_id,
+    mode
+):
+
+    USER_MODES[chat_id] = mode
+
+
+# =========================================================
+# GET USER TIMEFRAME
+# =========================================================
+
+def get_selected_timeframe(chat_id):
+
+    return USER_TIMEFRAMES.get(
+
+        chat_id,
+
+        TIMEFRAME
+
+    )
+
+
+# =========================================================
+# SET TIMEFRAME
+# =========================================================
+
+def set_selected_timeframe(
+    chat_id,
+    timeframe
+):
+
+    timeframe = (
+
+        str(timeframe)
+
+        .replace("🕐", "")
+
+        .strip()
+
+        .upper()
+
+    )
+
+
+    if timeframe not in VALID_TIMEFRAMES:
+
+        return False
+
+
+    USER_TIMEFRAMES[chat_id] = timeframe
+
+
+    # =============================================
+    # IF AUTO MODE
+    # UPDATE AUTO TIMEFRAME
+    # =============================================
+
+    if get_user_mode(chat_id) == "AUTOMATIC":
+
+        settings = get_auto_settings()
+
+
+        set_auto_scan(
+
+            enabled=settings["enabled"],
+
+            timeframe=timeframe,
+
+            pairs=settings["pairs"]
+
+        )
+
+
+    return True
 
 
 # =========================================================
@@ -213,9 +518,9 @@ def format_signal(result):
     )
 
 
-    # =====================================================
+    # =============================================
     # NEWS STATUS
-    # =====================================================
+    # =============================================
 
     if news_status in [
 
@@ -243,24 +548,30 @@ def format_signal(result):
         news_text = str(news_status)
 
 
-    # =====================================================
-    # BUY / SELL SIGNAL
-    # =====================================================
+    # =============================================
+    # BUY / SELL
+    # =============================================
 
     if signal in ["BUY", "SELL"]:
 
+
         signal_icon = (
+
             "🟢"
+
             if signal == "BUY"
+
             else "🔴"
+
         )
 
 
-        message = (
+        return (
 
             "🤖 SHEFIU AI FOREX VIP\n\n"
 
-            f"{signal_icon} 📊 {pair} — {signal}\n"
+            f"{signal_icon} 📊 {pair} — "
+            f"{signal}\n\n"
 
             f"⏱ Timeframe: {timeframe}\n\n"
 
@@ -274,7 +585,8 @@ def format_signal(result):
 
             f"📊 RSI: {rsi}\n"
 
-            f"🔥 Confidence: {confidence}%\n\n"
+            f"🔥 Confidence: "
+            f"{confidence}%\n\n"
 
             f"📰 News: {news_text}\n"
 
@@ -283,46 +595,44 @@ def format_signal(result):
         )
 
 
-    # =====================================================
-    # NO TRADE SIGNAL
-    # =====================================================
+    # =============================================
+    # NO TRADE
+    # =============================================
 
-    else:
+    reason = result.get(
 
-        reason = result.get(
-            "reason",
-            "Waiting for a stronger setup."
-        )
+        "reason",
 
+        "Waiting for a stronger setup."
 
-        message = (
-
-            "🤖 SHEFIU AI FOREX VIP\n\n"
-
-            f"📊 {pair}\n"
-
-            "⚪ Signal: NO TRADE\n"
-
-            f"⏱ Timeframe: {timeframe}\n\n"
-
-            f"📈 Trend: {trend}\n"
-
-            f"📊 RSI: {rsi}\n"
-
-            f"🕯 Pattern: {candlestick}\n"
-
-            f"📰 News: {news_text}\n\n"
-
-            f"📝 {reason}"
-
-        )
+    )
 
 
-    return message
+    return (
+
+        "🤖 SHEFIU AI FOREX VIP\n\n"
+
+        f"📊 {pair}\n"
+
+        "⚪ Signal: NO TRADE\n\n"
+
+        f"⏱ Timeframe: {timeframe}\n\n"
+
+        f"📈 Trend: {trend}\n"
+
+        f"📊 RSI: {rsi}\n"
+
+        f"🕯 Pattern: {candlestick}\n"
+
+        f"📰 News: {news_text}\n\n"
+
+        f"📝 {reason}"
+
+    )
 
 
 # =========================================================
-# CHECK MANUAL REQUEST COOLDOWN
+# MANUAL COOLDOWN
 # =========================================================
 
 def can_make_manual_request(chat_id):
@@ -331,8 +641,11 @@ def can_make_manual_request(chat_id):
 
 
     last_request = LAST_MANUAL_REQUEST.get(
+
         chat_id,
+
         0
+
     )
 
 
@@ -341,8 +654,12 @@ def can_make_manual_request(chat_id):
 
     if elapsed < MANUAL_REQUEST_COOLDOWN:
 
+
         remaining = int(
-            MANUAL_REQUEST_COOLDOWN - elapsed
+
+            MANUAL_REQUEST_COOLDOWN
+            - elapsed
+
         ) + 1
 
 
@@ -356,17 +673,20 @@ def can_make_manual_request(chat_id):
 
 
 # =========================================================
-# GET CACHED SIGNAL
+# CACHE
 # =========================================================
 
-def get_cached_signal(pair, timeframe):
+def get_cached_signal(
+    pair,
+    timeframe
+):
 
-    cache_key = f"{pair}_{timeframe}"
-
-
-    cached = SIGNAL_CACHE.get(
-        cache_key
+    key = (
+        f"{pair}_{timeframe}"
     )
+
+
+    cached = SIGNAL_CACHE.get(key)
 
 
     if not cached:
@@ -374,21 +694,20 @@ def get_cached_signal(pair, timeframe):
         return None
 
 
-    saved_time = cached.get(
-        "time",
-        0
-    )
+    if (
 
+        time.time()
+        - cached["time"]
 
-    if time.time() - saved_time < CACHE_DURATION:
+        < CACHE_DURATION
 
-        return cached.get("result")
+    ):
 
+        return cached["result"]
 
-    # Remove expired cache
 
     SIGNAL_CACHE.pop(
-        cache_key,
+        key,
         None
     )
 
@@ -396,20 +715,18 @@ def get_cached_signal(pair, timeframe):
     return None
 
 
-# =========================================================
-# SAVE SIGNAL TO CACHE
-# =========================================================
-
 def save_signal_to_cache(
     pair,
     timeframe,
     result
 ):
 
-    cache_key = f"{pair}_{timeframe}"
+    key = (
+        f"{pair}_{timeframe}"
+    )
 
 
-    SIGNAL_CACHE[cache_key] = {
+    SIGNAL_CACHE[key] = {
 
         "result": result,
 
@@ -419,202 +736,370 @@ def save_signal_to_cache(
 
 
 # =========================================================
-# GET USER TIMEFRAME
-# =========================================================
-
-def get_selected_timeframe(chat_id):
-
-    return USER_TIMEFRAMES.get(
-        chat_id,
-        TIMEFRAME
-    )
-
-
-# =========================================================
-# PROCESS TIMEFRAME SELECTION
-# =========================================================
-
-def process_timeframe_selection(
-    chat_id,
-    text
-):
-
-    timeframe_options = {
-
-        # 1 MINUTE
-
-        "1": "1M",
-        "1M": "1M",
-        "1 MIN": "1M",
-        "1 MINUTE": "1M",
-        "🕐 1 MIN": "1M",
-        "🕐1 MIN": "1M",
-
-
-        # 2 MINUTES
-
-        "2": "2M",
-        "2M": "2M",
-        "2 MIN": "2M",
-        "2 MINUTE": "2M",
-        "🕐 2 MIN": "2M",
-        "🕐2 MIN": "2M",
-
-
-        # 3 MINUTES
-
-        "3": "3M",
-        "3M": "3M",
-        "3 MIN": "3M",
-        "3 MINUTE": "3M",
-        "🕐 3 MIN": "3M",
-        "🕐3 MIN": "3M",
-
-
-        # 5 MINUTES
-
-        "5": "5M",
-        "5M": "5M",
-        "5 MIN": "5M",
-        "5 MINUTE": "5M",
-        "🕐 5 MIN": "5M",
-        "🕐5 MIN": "5M"
-
-    }
-
-
-    selected = timeframe_options.get(text)
-
-
-    if not selected:
-
-        return False
-
-
-    USER_TIMEFRAMES[chat_id] = selected
-
-
-    send_message(
-
-        chat_id,
-
-        f"✅ Timeframe changed successfully to {selected}\n\n"
-
-        "Now send a Forex pair.\n\n"
-
-        "Example:\n"
-
-        "EUR/USD"
-
-    )
-
-
-    return True
-
-
-# =========================================================
-# SEND WELCOME MESSAGE
+# WELCOME MESSAGE
 # =========================================================
 
 def send_welcome_message(chat_id):
 
-    pairs_text = "\n".join(
-        FOREX_PAIRS
-    )
-
-
-    selected_timeframe = get_selected_timeframe(
+    timeframe = get_selected_timeframe(
         chat_id
     )
 
 
-    welcome = (
+    send_message(
+
+        chat_id,
 
         "🤖 SHEFIU AI FOREX VIP\n\n"
 
-        "📊 AVAILABLE FOREX MARKETS:\n\n"
+        "Welcome to your Forex AI Bot! 🚀\n\n"
 
-        f"{pairs_text}\n\n"
+        f"⏱ Current Timeframe: "
+        f"{timeframe}\n\n"
 
-        f"⏱ Current Timeframe: {selected_timeframe}\n\n"
+        "Choose how you want the bot to work:\n\n"
 
-        "━━━━━━━━━━━━━━━━━━\n"
+        "👤 MANUAL\n"
+        "Analyze any pair yourself.\n\n"
 
-        "🕐 CHOOSE TIMEFRAME:\n\n"
+        "🤖 AUTOMATIC\n"
+        "Select multiple pairs and the bot "
+        "will scan them automatically.\n\n"
 
-        "1 MIN\n"
-        "2 MIN\n"
-        "3 MIN\n"
-        "5 MIN\n\n"
+        "👇 Use the buttons below.",
 
-        "━━━━━━━━━━━━━━━━━━\n\n"
+        get_main_menu()
 
-        "Then send a Forex pair.\n\n"
+    )
 
-        "Example:\n"
 
-        "EUR/USD\n\n"
+# =========================================================
+# STATUS
+# =========================================================
 
-        "Commands:\n"
+def send_status(chat_id):
 
-        "/HELP\n"
-        "/TIMEFRAME\n"
-        "/STATUS"
+    mode = get_user_mode(chat_id)
+
+
+    timeframe = get_selected_timeframe(
+        chat_id
+    )
+
+
+    settings = get_auto_settings()
+
+
+    auto_status = (
+
+        "🟢 RUNNING"
+
+        if settings["enabled"]
+
+        else "🔴 STOPPED"
+
+    )
+
+
+    pairs = settings["pairs"]
+
+
+    if pairs:
+
+        pairs_text = "\n".join(pairs)
+
+
+    else:
+
+        pairs_text = "No pairs selected"
+
+
+    message = (
+
+        "🤖 SHEFIU AI FOREX VIP\n\n"
+
+        f"👤 Current Mode: {mode}\n\n"
+
+        f"⏱ Your Timeframe: "
+        f"{timeframe}\n\n"
+
+        f"🤖 Automatic Scanner: "
+        f"{auto_status}\n\n"
+
+        f"⏱ Auto Timeframe: "
+        f"{settings['timeframe']}\n\n"
+
+        "📊 Automatic Pairs:\n\n"
+
+        f"{pairs_text}"
 
     )
 
 
     send_message(
+
         chat_id,
-        welcome
+
+        message,
+
+        get_main_menu()
+
     )
 
 
 # =========================================================
-# SEND HELP MESSAGE
+# HELP
 # =========================================================
 
 def send_help_message(chat_id):
 
-    selected_timeframe = get_selected_timeframe(
-        chat_id
-    )
+    message = (
 
+        "🤖 SHEFIU AI FOREX HELP\n\n"
 
-    help_message = (
+        "👤 MANUAL MODE\n"
+        "Press MANUAL, choose timeframe, "
+        "then press a pair.\n\n"
 
-        "🤖 SHEFIU AI FOREX VIP\n\n"
+        "🤖 AUTOMATIC MODE\n"
+        "1️⃣ Press AUTOMATIC\n"
+        "2️⃣ Choose PAIRS\n"
+        "3️⃣ Press all pairs you want\n"
+        "4️⃣ Choose TIMEFRAME\n"
+        "5️⃣ Press START AUTO\n\n"
 
-        f"⏱ Current Timeframe: {selected_timeframe}\n\n"
+        "⛔ STOP AUTO\n"
+        "Stops automatic scanning.\n\n"
 
-        "Choose timeframe by sending:\n\n"
-
-        "🕐 1 MIN\n"
-        "🕐 2 MIN\n"
-        "🕐 3 MIN\n"
-        "🕐 5 MIN\n\n"
-
-        "Then send a Forex pair:\n\n"
-
-        "EUR/USD\n"
-        "GBP/USD\n"
-        "XAU/USD\n"
-        "GBP/JPY\n\n"
-
-        "Commands:\n"
-
-        "/START\n"
-        "/HELP\n"
-        "/TIMEFRAME\n"
-        "/STATUS"
+        "📋 STATUS\n"
+        "Shows your current settings."
 
     )
 
 
     send_message(
+
         chat_id,
-        help_message
+
+        message,
+
+        get_main_menu()
+
     )
+
+
+# =========================================================
+# PROCESS PAIR
+# =========================================================
+
+def process_pair_request(
+    chat_id,
+    pair
+):
+
+    mode = get_user_mode(chat_id)
+
+
+    # =============================================
+    # AUTOMATIC MODE
+    # =============================================
+
+    if mode == "AUTOMATIC":
+
+
+        settings = get_auto_settings()
+
+
+        current_pairs = settings["pairs"]
+
+
+        if pair in current_pairs:
+
+
+            remove_auto_pair(pair)
+
+
+            send_message(
+
+                chat_id,
+
+                f"➖ {pair} removed from "
+                "Automatic Scanner.\n\n"
+
+                f"📊 Selected pairs:\n"
+
+                f"{get_auto_settings()['pairs']}",
+
+                get_pairs_keyboard()
+
+            )
+
+
+        else:
+
+
+            add_auto_pair(pair)
+
+
+            send_message(
+
+                chat_id,
+
+                f"✅ {pair} added to "
+                "Automatic Scanner.\n\n"
+
+                "You can press more pairs.\n\n"
+
+                "When finished:\n"
+
+                "🕐 Choose TIMEFRAME\n"
+
+                "▶️ Press START AUTO",
+
+                get_pairs_keyboard()
+
+            )
+
+
+        return
+
+
+    # =============================================
+    # MANUAL MODE
+    # =============================================
+
+    timeframe = get_selected_timeframe(
+        chat_id
+    )
+
+
+    cached = get_cached_signal(
+
+        pair,
+
+        timeframe
+
+    )
+
+
+    if cached:
+
+
+        send_message(
+
+            chat_id,
+
+            f"📋 Recent analysis for "
+            f"{pair}\n\n"
+
+            f"⏱ {timeframe}",
+
+            get_main_menu()
+
+        )
+
+
+        send_message(
+
+            chat_id,
+
+            format_signal(cached)
+
+        )
+
+
+        return
+
+
+    allowed, remaining = (
+        can_make_manual_request(
+            chat_id
+        )
+    )
+
+
+    if not allowed:
+
+
+        send_message(
+
+            chat_id,
+
+            f"⏳ Please wait "
+            f"{remaining} seconds.",
+
+            get_main_menu()
+
+        )
+
+
+        return
+
+
+    send_message(
+
+        chat_id,
+
+        f"🔍 Analyzing {pair}\n\n"
+
+        f"⏱ Timeframe: {timeframe}\n\n"
+
+        "Please wait..."
+
+    )
+
+
+    try:
+
+
+        result = get_signal(
+
+            pair,
+
+            timeframe
+
+        )
+
+
+        save_signal_to_cache(
+
+            pair,
+
+            timeframe,
+
+            result
+
+        )
+
+
+        send_message(
+
+            chat_id,
+
+            format_signal(result),
+
+            get_main_menu()
+
+        )
+
+
+    except Exception as e:
+
+
+        print(
+            f"Manual analysis error: {e}"
+        )
+
+
+        send_message(
+
+            chat_id,
+
+            "❌ Error analyzing this pair.",
+
+            get_main_menu()
+
+        )
 
 
 # =========================================================
@@ -624,7 +1109,7 @@ def send_help_message(chat_id):
 def run_telegram_bot():
 
     print(
-        "✅ Manual Telegram bot started."
+        "✅ Telegram Control Bot Started."
     )
 
 
@@ -633,30 +1118,33 @@ def run_telegram_bot():
 
     while True:
 
+
         try:
 
-            # =============================================
-            # CHECK BOT TOKEN
-            # =============================================
 
             if not BOT_TOKEN:
+
 
                 print(
                     "❌ BOT_TOKEN is missing."
                 )
 
+
                 time.sleep(10)
+
 
                 continue
 
 
             # =============================================
-            # TELEGRAM GET UPDATES
+            # GET UPDATES
             # =============================================
 
             url = (
+
                 f"https://api.telegram.org/bot"
                 f"{BOT_TOKEN}/getUpdates"
+
             )
 
 
@@ -693,26 +1181,15 @@ def run_telegram_bot():
             data = response.json()
 
 
-            if not data.get("ok"):
-
-                print(
-                    "Telegram getUpdates error:",
-                    data
-                )
-
-                time.sleep(5)
-
-                continue
-
-
             # =============================================
-            # PROCESS TELEGRAM UPDATES
+            # PROCESS UPDATES
             # =============================================
 
             for update in data.get(
                 "result",
                 []
             ):
+
 
                 update_id = update.get(
                     "update_id"
@@ -724,28 +1201,24 @@ def run_telegram_bot():
                     offset = update_id + 1
 
 
-                telegram_message = update.get(
+                message = update.get(
                     "message"
                 )
 
 
-                if not telegram_message:
+                if not message:
 
                     continue
 
 
-                chat = telegram_message.get(
-                    "chat"
-                )
+                chat_id = (
 
+                    message
 
-                if not chat:
+                    .get("chat", {})
 
-                    continue
+                    .get("id")
 
-
-                chat_id = chat.get(
-                    "id"
                 )
 
 
@@ -754,7 +1227,7 @@ def run_telegram_bot():
                     continue
 
 
-                raw_text = telegram_message.get(
+                raw_text = message.get(
                     "text",
                     ""
                 )
@@ -765,28 +1238,40 @@ def run_telegram_bot():
                     continue
 
 
-                text = raw_text.strip().upper()
+                text = raw_text.strip()
 
 
-                # Support commands used in groups
+                upper_text = text.upper()
 
-                command = text.split("@")[0]
+
+                command = upper_text.split("@")[0]
 
 
                 print(
-                    f"📩 Telegram message received: {text}"
+
+                    f"📩 Telegram: "
+                    f"{upper_text}"
+
                 )
 
 
                 # =========================================
-                # START
+                # START / MENU
                 # =========================================
 
-                if command == "/START":
+                if command in [
+
+                    "/START",
+
+                    "🏠 MENU"
+
+                ]:
+
 
                     send_welcome_message(
                         chat_id
                     )
+
 
                     continue
 
@@ -795,11 +1280,141 @@ def run_telegram_bot():
                 # HELP
                 # =========================================
 
-                if command == "/HELP":
+                if command in [
+
+                    "/HELP",
+
+                    "❓ HELP"
+
+                ]:
+
 
                     send_help_message(
                         chat_id
                     )
+
+
+                    continue
+
+
+                # =========================================
+                # AUTOMATIC MODE
+                # =========================================
+
+                if upper_text == "🤖 AUTOMATIC":
+
+
+                    set_user_mode(
+
+                        chat_id,
+
+                        "AUTOMATIC"
+
+                    )
+
+
+                    send_message(
+
+                        chat_id,
+
+                        "🤖 AUTOMATIC MODE SELECTED\n\n"
+
+                        "Now press 📊 PAIRS and "
+                        "select all Forex pairs you "
+                        "want the bot to scan.",
+
+                        get_main_menu()
+
+                    )
+
+
+                    continue
+
+
+                # =========================================
+                # MANUAL MODE
+                # =========================================
+
+                if upper_text == "👤 MANUAL":
+
+
+                    set_user_mode(
+
+                        chat_id,
+
+                        "MANUAL"
+
+                    )
+
+
+                    send_message(
+
+                        chat_id,
+
+                        "👤 MANUAL MODE SELECTED\n\n"
+
+                        "Choose a timeframe and "
+                        "press any Forex pair.",
+
+                        get_main_menu()
+
+                    )
+
+
+                    continue
+
+
+                # =========================================
+                # PAIRS
+                # =========================================
+
+                if upper_text == "📊 PAIRS":
+
+
+                    mode = get_user_mode(
+                        chat_id
+                    )
+
+
+                    send_message(
+
+                        chat_id,
+
+                        f"📊 SELECT FOREX PAIRS\n\n"
+
+                        f"Current Mode: {mode}\n\n"
+
+                        "Press a pair below.",
+
+                        get_pairs_keyboard()
+
+                    )
+
+
+                    continue
+
+
+                # =========================================
+                # CLEAR PAIRS
+                # =========================================
+
+                if upper_text == "🗑 CLEAR PAIRS":
+
+
+                    clear_auto_pairs()
+
+
+                    send_message(
+
+                        chat_id,
+
+                        "🗑 All Automatic pairs "
+                        "have been cleared.",
+
+                        get_pairs_keyboard()
+
+                    )
+
 
                     continue
 
@@ -808,12 +1423,60 @@ def run_telegram_bot():
                 # TIMEFRAME
                 # =========================================
 
-                if command == "/TIMEFRAME":
+                if upper_text == "🕐 TIMEFRAME":
 
-                    selected_timeframe = (
-                        get_selected_timeframe(
-                            chat_id
-                        )
+
+                    send_message(
+
+                        chat_id,
+
+                        "🕐 CHOOSE TIMEFRAME\n\n"
+
+                        "Press your preferred "
+                        "timeframe:",
+
+                        get_timeframe_keyboard()
+
+                    )
+
+
+                    continue
+
+
+                # =========================================
+                # TIMEFRAME BUTTON
+                # =========================================
+
+                if upper_text in [
+
+                    "🕐 1M",
+
+                    "🕐 2M",
+
+                    "🕐 3M",
+
+                    "🕐 5M"
+
+                ]:
+
+
+                    timeframe = (
+
+                        upper_text
+
+                        .replace("🕐", "")
+
+                        .strip()
+
+                    )
+
+
+                    set_selected_timeframe(
+
+                        chat_id,
+
+                        timeframe
+
                     )
 
 
@@ -821,19 +1484,132 @@ def run_telegram_bot():
 
                         chat_id,
 
-                        "🤖 SHEFIU AI FOREX VIP\n\n"
+                        f"✅ Timeframe selected: "
+                        f"{timeframe}\n\n"
 
-                        f"⏱ Current Timeframe: "
-                        f"{selected_timeframe}\n\n"
+                        "Your selection has been "
+                        "saved.",
 
-                        "Choose a new timeframe:\n\n"
-
-                        "🕐 1 MIN\n"
-                        "🕐 2 MIN\n"
-                        "🕐 3 MIN\n"
-                        "🕐 5 MIN"
+                        get_main_menu()
 
                     )
+
+
+                    continue
+
+
+                # =========================================
+                # START AUTOMATIC
+                # =========================================
+
+                if upper_text == "▶️ START AUTO":
+
+
+                    settings = get_auto_settings()
+
+
+                    pairs = settings["pairs"]
+
+
+                    if not pairs:
+
+
+                        send_message(
+
+                            chat_id,
+
+                            "⚠️ Please select at least "
+                            "one Forex pair first.\n\n"
+
+                            "Press 📊 PAIRS",
+
+                            get_main_menu()
+
+                        )
+
+
+                        continue
+
+
+                    timeframe = get_selected_timeframe(
+                        chat_id
+                    )
+
+
+                    set_auto_scan(
+
+                        enabled=True,
+
+                        timeframe=timeframe,
+
+                        pairs=pairs
+
+                    )
+
+
+                    pairs_text = "\n".join(
+                        pairs
+                    )
+
+
+                    send_message(
+
+                        chat_id,
+
+                        "🚀 AUTOMATIC SCANNER STARTED\n\n"
+
+                        f"⏱ Timeframe: "
+                        f"{timeframe}\n\n"
+
+                        "📊 Scanning:\n\n"
+
+                        f"{pairs_text}\n\n"
+
+                        "🤖 The bot will continue "
+                        "scanning automatically until "
+                        "you press STOP AUTO.",
+
+                        get_main_menu()
+
+                    )
+
+
+                    continue
+
+
+                # =========================================
+                # STOP AUTOMATIC
+                # =========================================
+
+                if upper_text == "⛔ STOP AUTO":
+
+
+                    settings = get_auto_settings()
+
+
+                    set_auto_scan(
+
+                        enabled=False,
+
+                        timeframe=settings["timeframe"],
+
+                        pairs=settings["pairs"]
+
+                    )
+
+
+                    send_message(
+
+                        chat_id,
+
+                        "⛔ AUTOMATIC SCANNER STOPPED\n\n"
+
+                        "Manual mode can still be used.",
+
+                        get_main_menu()
+
+                    )
+
 
                     continue
 
@@ -842,241 +1618,70 @@ def run_telegram_bot():
                 # STATUS
                 # =========================================
 
-                if command == "/STATUS":
+                if command == "/STATUS" or (
+                    upper_text == "📋 STATUS"
+                ):
 
-                    selected_timeframe = (
-                        get_selected_timeframe(
-                            chat_id
-                        )
-                    )
 
-
-                    send_message(
-
-                        chat_id,
-
-                        "🤖 SHEFIU AI FOREX VIP\n\n"
-
-                        "🟢 Bot Status: ONLINE\n\n"
-
-                        f"⏱ Selected Timeframe: "
-                        f"{selected_timeframe}\n\n"
-
-                        "📊 Forex Scanner: ACTIVE"
-
-                    )
-
-                    continue
-
-
-                # =========================================
-                # TIMEFRAME SELECTION
-                # =========================================
-
-                timeframe_changed = (
-                    process_timeframe_selection(
-                        chat_id,
-                        text
-                    )
-                )
-
-
-                if timeframe_changed:
-
-                    continue
-
-
-                # =========================================
-                # FOREX PAIR REQUEST
-                # =========================================
-
-                if text in FOREX_PAIRS:
-
-                    selected_timeframe = (
-                        get_selected_timeframe(
-                            chat_id
-                        )
-                    )
-
-
-                    # =====================================
-                    # CHECK CACHE
-                    # =====================================
-
-                    cached_result = (
-                        get_cached_signal(
-                            text,
-                            selected_timeframe
-                        )
-                    )
-
-
-                    if cached_result:
-
-                        send_message(
-
-                            chat_id,
-
-                            f"📋 Recent "
-                            f"{selected_timeframe} analysis "
-                            f"for {text}\n\n"
-
-                            "Using recent analysis."
-
-                        )
-
-
-                        send_message(
-
-                            chat_id,
-
-                            format_signal(
-                                cached_result
-                            )
-
-                        )
-
-                        continue
-
-
-                    # =====================================
-                    # COOLDOWN
-                    # =====================================
-
-                    allowed, remaining = (
-                        can_make_manual_request(
-                            chat_id
-                        )
-                    )
-
-
-                    if not allowed:
-
-                        send_message(
-
-                            chat_id,
-
-                            f"⏳ Please wait "
-                            f"{remaining} seconds before "
-                            f"requesting another analysis."
-
-                        )
-
-                        continue
-
-
-                    # =====================================
-                    # ANALYZING MESSAGE
-                    # =====================================
-
-                    send_message(
-
-                        chat_id,
-
-                        f"🔍 Analyzing {text}\n\n"
-
-                        f"⏱ Timeframe: "
-                        f"{selected_timeframe}\n\n"
-
-                        "Please wait..."
-
-                    )
-
-
-                    try:
-
-                        # =================================
-                        # GET SIGNAL
-                        # =================================
-
-                        result = get_signal(
-                            text,
-                            selected_timeframe
-                        )
-
-
-                        # =================================
-                        # SAVE CACHE
-                        # =================================
-
-                        save_signal_to_cache(
-
-                            text,
-                            selected_timeframe,
-                            result
-
-                        )
-
-
-                        # =================================
-                        # SEND RESULT
-                        # =================================
-
-                        send_message(
-
-                            chat_id,
-
-                            format_signal(
-                                result
-                            )
-
-                        )
-
-
-                    except Exception as e:
-
-                        print(
-                            f"❌ Manual analysis error: {e}"
-                        )
-
-
-                        send_message(
-
-                            chat_id,
-
-                            "❌ Error analyzing this pair.\n\n"
-
-                            "Please try again later."
-
-                        )
+                    send_status(chat_id)
 
 
                     continue
 
 
                 # =========================================
-                # UNKNOWN MESSAGE
+                # FOREX PAIR
+                # =========================================
+
+                if upper_text in FOREX_PAIRS:
+
+
+                    process_pair_request(
+
+                        chat_id,
+
+                        upper_text
+
+                    )
+
+
+                    continue
+
+
+                # =========================================
+                # UNKNOWN
                 # =========================================
 
                 send_message(
 
                     chat_id,
 
-                    "⚠️ Please send a valid command, "
-                    "timeframe, or Forex pair.\n\n"
+                    "⚠️ Please use the buttons "
+                    "below.",
 
-                    "Example:\n"
-
-                    "EUR/USD\n\n"
-
-                    "Send /HELP for instructions."
+                    get_main_menu()
 
                 )
 
 
         except requests.RequestException as e:
 
+
             print(
-                f"❌ Telegram connection error: {e}"
+                f"❌ Telegram connection error: "
+                f"{e}"
             )
+
 
             time.sleep(5)
 
 
         except Exception as e:
 
+
             print(
                 f"❌ Telegram bot error: {e}"
             )
+
 
             time.sleep(5)
