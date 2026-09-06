@@ -40,36 +40,6 @@ VALID_TIMEFRAMES = [
 
 
 # =========================================================
-# VALID FOREX PAIRS
-# =========================================================
-
-VALID_PAIRS = [
-
-    "EUR/USD",
-    "GBP/USD",
-
-    "USD/JPY",
-    "USD/CHF",
-
-    "AUD/USD",
-    "USD/CAD",
-
-    "NZD/USD",
-    "XAU/USD",
-
-    "EUR/GBP",
-    "CHF/JPY",
-
-    "AUD/JPY",
-    "EUR/JPY",
-
-    "GBP/JPY",
-    "USD/SGD"
-
-]
-
-
-# =========================================================
 # SET AUTO SCAN
 # =========================================================
 
@@ -88,18 +58,16 @@ def set_auto_scan(
 
 
         # =============================================
-        # ENABLE / DISABLE AUTOMATIC SCANNER
+        # ENABLE / DISABLE
         # =============================================
 
         if enabled is not None:
 
-            AUTO_SCAN_ENABLED = bool(
-                enabled
-            )
+            AUTO_SCAN_ENABLED = bool(enabled)
 
 
         # =============================================
-        # SET TIMEFRAME
+        # TIMEFRAME
         # =============================================
 
         if timeframe is not None:
@@ -117,170 +85,37 @@ def set_auto_scan(
 
 
         # =============================================
-        # SET SELECTED PAIRS
+        # PAIRS
         # =============================================
 
         if pairs is not None:
 
-            valid_pairs = []
+            clean_pairs = []
 
 
             for pair in pairs:
 
-                pair = (
-                    str(pair)
-                    .strip()
-                    .upper()
-                )
+                pair = str(pair).strip().upper()
 
 
-                if pair in VALID_PAIRS:
+                if pair and pair not in clean_pairs:
 
-                    valid_pairs.append(
-                        pair
-                    )
+                    clean_pairs.append(pair)
 
 
-            AUTO_PAIRS = valid_pairs
+            AUTO_PAIRS = clean_pairs
 
 
         print(
-            "===================================="
-        )
 
-        print(
-            "🤖 AUTO SETTINGS UPDATED"
-        )
+            "\n"
+            "====================================\n"
+            "🤖 AUTO SETTINGS UPDATED\n"
+            f"Enabled: {AUTO_SCAN_ENABLED}\n"
+            f"Timeframe: {AUTO_TIMEFRAME}\n"
+            f"Pairs: {AUTO_PAIRS}\n"
+            "====================================\n"
 
-        print(
-            f"Enabled: "
-            f"{AUTO_SCAN_ENABLED}"
-        )
-
-        print(
-            f"Timeframe: "
-            f"{AUTO_TIMEFRAME}"
-        )
-
-        print(
-            f"Pairs: "
-            f"{AUTO_PAIRS}"
-        )
-
-        print(
-            "===================================="
-        )
-
-
-# =========================================================
-# SET AUTOMATIC PAIRS
-# =========================================================
-
-def set_auto_pairs(pairs):
-
-    set_auto_scan(
-        pairs=pairs
-    )
-
-
-# =========================================================
-# ADD ONE PAIR
-# =========================================================
-
-def add_auto_pair(pair):
-
-    global AUTO_PAIRS
-
-
-    pair = (
-        str(pair)
-        .strip()
-        .upper()
-    )
-
-
-    if pair not in VALID_PAIRS:
-
-        return False
-
-
-    with AUTO_SETTINGS_LOCK:
-
-
-        if pair not in AUTO_PAIRS:
-
-            AUTO_PAIRS.append(
-                pair
-            )
-
-
-        print(
-            f"➕ Pair added: {pair}"
-        )
-
-
-        print(
-            f"Selected pairs: "
-            f"{AUTO_PAIRS}"
-        )
-
-
-    return True
-
-
-# =========================================================
-# REMOVE ONE PAIR
-# =========================================================
-
-def remove_auto_pair(pair):
-
-    global AUTO_PAIRS
-
-
-    pair = (
-        str(pair)
-        .strip()
-        .upper()
-    )
-
-
-    with AUTO_SETTINGS_LOCK:
-
-
-        if pair in AUTO_PAIRS:
-
-            AUTO_PAIRS.remove(
-                pair
-            )
-
-
-            print(
-                f"➖ Pair removed: {pair}"
-            )
-
-
-            return True
-
-
-    return False
-
-
-# =========================================================
-# CLEAR ALL PAIRS
-# =========================================================
-
-def clear_auto_pairs():
-
-    global AUTO_PAIRS
-
-
-    with AUTO_SETTINGS_LOCK:
-
-        AUTO_PAIRS = []
-
-
-        print(
-            "🗑 All automatic pairs cleared."
         )
 
 
@@ -294,14 +129,11 @@ def get_auto_settings():
 
         return {
 
-            "enabled":
-                AUTO_SCAN_ENABLED,
+            "enabled": AUTO_SCAN_ENABLED,
 
-            "timeframe":
-                AUTO_TIMEFRAME,
+            "timeframe": AUTO_TIMEFRAME,
 
-            "pairs":
-                AUTO_PAIRS.copy()
+            "pairs": AUTO_PAIRS.copy()
 
         }
 
@@ -329,7 +161,7 @@ def get_auto_timeframe():
 
 
 # =========================================================
-# GET SELECTED AUTO PAIRS
+# GET AUTO PAIRS
 # =========================================================
 
 def get_auto_pairs():
@@ -340,18 +172,67 @@ def get_auto_pairs():
 
 
 # =========================================================
-# CHECK IF PAIR IS SELECTED
+# ADD AUTO PAIR
 # =========================================================
 
-def is_pair_selected(pair):
+def add_auto_pair(pair):
 
-    pair = (
-        str(pair)
-        .strip()
-        .upper()
-    )
+    global AUTO_PAIRS
+
+
+    pair = str(pair).strip().upper()
 
 
     with AUTO_SETTINGS_LOCK:
 
-        return pair in AUTO_PAIRS
+        if pair not in AUTO_PAIRS:
+
+            AUTO_PAIRS.append(pair)
+
+
+        print(
+            f"➕ Auto pair added: {pair}"
+        )
+
+
+# =========================================================
+# REMOVE AUTO PAIR
+# =========================================================
+
+def remove_auto_pair(pair):
+
+    global AUTO_PAIRS
+
+
+    pair = str(pair).strip().upper()
+
+
+    with AUTO_SETTINGS_LOCK:
+
+        if pair in AUTO_PAIRS:
+
+            AUTO_PAIRS.remove(pair)
+
+
+        print(
+            f"➖ Auto pair removed: {pair}"
+        )
+
+
+# =========================================================
+# CLEAR AUTO PAIRS
+# =========================================================
+
+def clear_auto_pairs():
+
+    global AUTO_PAIRS
+
+
+    with AUTO_SETTINGS_LOCK:
+
+        AUTO_PAIRS = []
+
+
+        print(
+            "🗑 All automatic pairs cleared."
+        )
