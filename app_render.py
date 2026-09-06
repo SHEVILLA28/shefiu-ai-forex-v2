@@ -2,6 +2,8 @@ import os
 import json
 import requests
 from datetime import datetime, timezone
+
+from market_session import is_forex_market_open
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse, parse_qs
 
@@ -11,15 +13,8 @@ TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
 def forex_market_open():
-    now = datetime.now(timezone.utc)
-    wd = now.weekday()
-    if wd == 5:
-        return False
-    if wd == 6 and now.hour < 21:
-        return False
-    if wd == 4 and now.hour >= 21:
-        return False
-    return True
+
+    return is_forex_market_open()
 
 
 def send_telegram_signal(result):

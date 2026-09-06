@@ -15,6 +15,7 @@ from telegram_bot import (
 )
 
 from signals import get_signal
+from market_session import is_forex_market_open
 
 from bot_control import get_auto_settings
 
@@ -711,6 +712,27 @@ def run_automatic_scanner():
             if not auto_enabled:
 
                 time.sleep(5)
+
+                continue
+
+
+            # =============================================
+            # FOREX MARKET SESSION
+            # Keep AUTO enabled, but pause scanning and new
+            # trade execution while the weekly market is closed.
+            # The loop checks again automatically, so Sunday
+            # reopening needs no Render restart or manual action.
+            # =============================================
+
+            if not is_forex_market_open():
+
+                print(
+                    "🔴 Forex market is closed. "
+                    "Automatic scanner is paused and will "
+                    "resume automatically when the market opens."
+                )
+
+                time.sleep(60)
 
                 continue
 

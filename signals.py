@@ -3,6 +3,8 @@ import time
 import threading
 from datetime import datetime, timezone
 
+from market_session import is_forex_market_open, market_status_message
+
 import requests
 import pandas as pd
 
@@ -82,29 +84,7 @@ def format_symbol(pair):
 
 def is_market_open():
 
-    now = datetime.now(timezone.utc)
-
-    weekday = now.weekday()
-
-    hour = now.hour
-
-
-    # Saturday
-    if weekday == 5:
-        return False
-
-
-    # Sunday before market opens
-    if weekday == 6 and hour < 22:
-        return False
-
-
-    # Friday after market closes
-    if weekday == 4 and hour >= 22:
-        return False
-
-
-    return True
+    return is_forex_market_open()
 
 
 # =========================================================
@@ -1193,9 +1173,7 @@ def get_signal(
 
             timeframe,
 
-            "Forex market is currently closed. "
-            "Automatic trading is paused until "
-            "the market reopens."
+            market_status_message()
 
         )
 

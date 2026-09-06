@@ -3,6 +3,8 @@ import time
 import threading
 from datetime import datetime, timezone
 
+from market_session import is_forex_market_open
+
 import requests
 import pandas as pd
 
@@ -431,7 +433,7 @@ def get_signal(pair, timeframe="5M"):
 
     now = datetime.now(timezone.utc)
 
-    if now.weekday() >= 5:
+    if not is_forex_market_open():
 
         return no_trade(
             display_pair,
