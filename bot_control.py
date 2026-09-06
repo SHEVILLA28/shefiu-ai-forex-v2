@@ -8,6 +8,36 @@ import threading
 
 
 # =========================================================
+# ALL AVAILABLE FOREX PAIRS
+# =========================================================
+
+ALL_FOREX_PAIRS = [
+
+    "EUR/USD",
+    "GBP/USD",
+
+    "USD/JPY",
+    "USD/CHF",
+
+    "AUD/USD",
+    "USD/CAD",
+
+    "NZD/USD",
+    "XAU/USD",
+
+    "EUR/GBP",
+    "CHF/JPY",
+
+    "AUD/JPY",
+    "EUR/JPY",
+
+    "GBP/JPY",
+    "USD/SGD"
+
+]
+
+
+# =========================================================
 # AUTOMATIC SCANNER SETTINGS
 # =========================================================
 
@@ -56,7 +86,6 @@ def set_auto_scan(
 
     with AUTO_SETTINGS_LOCK:
 
-
         # =============================================
         # ENABLE / DISABLE
         # =============================================
@@ -98,7 +127,11 @@ def set_auto_scan(
                 pair = str(pair).strip().upper()
 
 
-                if pair and pair not in clean_pairs:
+                if (
+                    pair
+                    and pair in ALL_FOREX_PAIRS
+                    and pair not in clean_pairs
+                ):
 
                     clean_pairs.append(pair)
 
@@ -183,16 +216,52 @@ def add_auto_pair(pair):
     pair = str(pair).strip().upper()
 
 
+    if pair not in ALL_FOREX_PAIRS:
+
+        print(
+            f"⚠️ Invalid Forex pair: {pair}"
+        )
+
+        return False
+
+
     with AUTO_SETTINGS_LOCK:
 
         if pair not in AUTO_PAIRS:
 
             AUTO_PAIRS.append(pair)
 
+            print(
+                f"➕ Auto pair added: {pair}"
+            )
+
+            return True
+
+
+    return False
+
+
+# =========================================================
+# ADD ALL FOREX PAIRS
+# =========================================================
+
+def add_all_auto_pairs():
+
+    global AUTO_PAIRS
+
+
+    with AUTO_SETTINGS_LOCK:
+
+        AUTO_PAIRS = ALL_FOREX_PAIRS.copy()
+
 
         print(
-            f"➕ Auto pair added: {pair}"
+            f"✅ All Forex pairs added: "
+            f"{len(AUTO_PAIRS)} pairs"
         )
+
+
+    return AUTO_PAIRS.copy()
 
 
 # =========================================================
@@ -214,9 +283,14 @@ def remove_auto_pair(pair):
             AUTO_PAIRS.remove(pair)
 
 
-        print(
-            f"➖ Auto pair removed: {pair}"
-        )
+            print(
+                f"➖ Auto pair removed: {pair}"
+            )
+
+            return True
+
+
+    return False
 
 
 # =========================================================
@@ -236,3 +310,12 @@ def clear_auto_pairs():
         print(
             "🗑 All automatic pairs cleared."
         )
+
+
+# =========================================================
+# GET TOTAL AVAILABLE PAIRS
+# =========================================================
+
+def get_all_forex_pairs():
+
+    return ALL_FOREX_PAIRS.copy()
