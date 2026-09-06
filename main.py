@@ -161,50 +161,6 @@ def send_telegram_message(message):
 
 
 # =========================================================
-# FOREX PAIRS
-# =========================================================
-
-FOREX_PAIRS = [
-
-    "EUR/USD",
-    "GBP/USD",
-
-    "USD/JPY",
-    "USD/CHF",
-
-    "AUD/USD",
-    "USD/CAD",
-
-    "NZD/USD",
-    "XAU/USD",
-
-    "EUR/GBP",
-    "CHF/JPY",
-
-    "AUD/JPY",
-    "EUR/JPY",
-
-    "GBP/JPY",
-    "USD/SGD"
-
-]
-
-
-# =========================================================
-# METAAPI SYMBOL CONVERSION
-# =========================================================
-
-def convert_to_mt5_symbol(pair):
-
-    symbol = pair.replace(
-        "/",
-        ""
-    )
-
-    return symbol + "m"
-
-
-# =========================================================
 # DEFAULT SETTINGS
 # =========================================================
 
@@ -246,6 +202,20 @@ TRADE_COOLDOWN = 1800
 LAST_SIGNAL = {}
 
 LAST_TRADE_TIME = {}
+
+
+# =========================================================
+# METAAPI SYMBOL CONVERSION
+# =========================================================
+
+def convert_to_mt5_symbol(pair):
+
+    symbol = pair.replace(
+        "/",
+        ""
+    )
+
+    return symbol + "m"
 
 
 # =========================================================
@@ -467,6 +437,7 @@ def execute_trade(result, pair):
     if signal not in [
 
         "BUY",
+
         "SELL"
 
     ]:
@@ -666,7 +637,6 @@ def execute_trade(result, pair):
 
 # =========================================================
 # WAIT FOR NEXT AUTO SCAN
-# BUT CHECK IF AUTO MODE IS TURNED OFF
 # =========================================================
 
 def wait_for_next_scan():
@@ -679,7 +649,7 @@ def wait_for_next_scan():
         auto_settings = get_auto_settings()
 
 
-        # Stop waiting immediately if AUTO is OFF
+        # Stop immediately if AUTO is OFF
 
         if not auto_settings.get(
             "enabled",
@@ -717,20 +687,20 @@ def run_automatic_scanner():
 
 
             auto_enabled = auto_settings.get(
-
                 "enabled",
-
                 False
-
             )
 
 
             auto_timeframe = auto_settings.get(
-
                 "timeframe",
-
                 TIMEFRAME
+            )
 
+
+            selected_pairs = auto_settings.get(
+                "pairs",
+                []
             )
 
 
@@ -739,6 +709,22 @@ def run_automatic_scanner():
             # =============================================
 
             if not auto_enabled:
+
+                time.sleep(5)
+
+                continue
+
+
+            # =============================================
+            # NO PAIRS SELECTED
+            # =============================================
+
+            if not selected_pairs:
+
+                print(
+                    "⚠️ Automatic mode is ON "
+                    "but no Forex pairs are selected."
+                )
 
                 time.sleep(5)
 
@@ -763,6 +749,11 @@ def run_automatic_scanner():
             )
 
             print(
+                f"📊 SELECTED PAIRS: "
+                f"{selected_pairs}"
+            )
+
+            print(
                 "Starting Forex market scan..."
             )
 
@@ -772,10 +763,10 @@ def run_automatic_scanner():
 
 
             # =============================================
-            # SCAN ALL FOREX PAIRS
+            # SCAN ONLY SELECTED FOREX PAIRS
             # =============================================
 
-            for pair in FOREX_PAIRS:
+            for pair in selected_pairs:
 
                 try:
 
@@ -787,11 +778,8 @@ def run_automatic_scanner():
 
 
                     if not auto_settings.get(
-
                         "enabled",
-
                         False
-
                     ):
 
                         print(
@@ -802,16 +790,33 @@ def run_automatic_scanner():
 
 
                     # =====================================
+                    # CHECK CURRENT SELECTED PAIRS
+                    # =====================================
+
+                    current_pairs = auto_settings.get(
+                        "pairs",
+                        []
+                    )
+
+
+                    if pair not in current_pairs:
+
+                        print(
+                            f"Skipping {pair} "
+                            "because it was removed."
+                        )
+
+                        continue
+
+
+                    # =====================================
                     # GET CURRENT TIMEFRAME
                     # =====================================
 
                     auto_timeframe = (
                         auto_settings.get(
-
                             "timeframe",
-
                             TIMEFRAME
-
                         )
                     )
 
@@ -827,20 +832,14 @@ def run_automatic_scanner():
                     # =====================================
 
                     result = get_signal(
-
                         pair,
-
                         auto_timeframe
-
                     )
 
 
                     signal = result.get(
-
                         "signal",
-
                         "NO TRADE"
-
                     )
 
 
@@ -860,7 +859,6 @@ def run_automatic_scanner():
 
                     # =====================================
                     # UNIQUE SIGNAL KEY
-                    # PAIR + TIMEFRAME
                     # =====================================
 
                     signal_key = (
@@ -917,11 +915,8 @@ def run_automatic_scanner():
 
                             trade_success, trade_status = (
                                 execute_trade(
-
                                     result,
-
                                     pair
-
                                 )
                             )
 
@@ -963,7 +958,7 @@ def run_automatic_scanner():
                                     f"{auto_timeframe}\n"
 
                                     f"📦 Lot Size: "
-                                    f"{TRADE_VOLUME}\n"
+                                    f"{TRADE_VOLUME}\n\n"
 
                                     "🛡 Trade Protection: "
                                     "ACTIVE\n"
@@ -1058,11 +1053,8 @@ def run_automatic_scanner():
 
 
         if auto_settings.get(
-
             "enabled",
-
             False
-
         ):
 
             print(
@@ -1169,7 +1161,7 @@ if __name__ == "__main__":
 
 
     # =====================================================
-    # START MANUAL TELEGRAM BOT
+    # START TELEGRAM BOT
     # =====================================================
 
     telegram_thread = threading.Thread(
@@ -1185,7 +1177,7 @@ if __name__ == "__main__":
 
 
     print(
-        "✅ Manual Telegram bot started."
+        "✅ Telegram control bot started."
     )
 
 
