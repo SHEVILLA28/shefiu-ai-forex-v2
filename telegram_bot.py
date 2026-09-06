@@ -1,4 +1,5 @@
 import time
+import json
 import requests
 
 from config import BOT_TOKEN
@@ -131,6 +132,15 @@ def send_message(chat_id, text):
         return response.ok
 
 
+    except requests.RequestException as e:
+
+        print(
+            f"Telegram connection error: {e}"
+        )
+
+        return False
+
+
     except Exception as e:
 
         print(
@@ -148,101 +158,68 @@ def format_signal(result):
 
 
     signal = result.get(
-
         "signal",
-
         "NO TRADE"
-
     )
 
 
     pair = result.get(
-
         "pair",
-
         "Unknown"
-
     )
 
 
     timeframe = result.get(
-
         "timeframe",
-
         TIMEFRAME
-
     )
 
 
     trend = result.get(
-
         "trend",
-
         "WAIT"
-
     )
 
 
     confidence = result.get(
-
         "confidence",
-
         0
-
     )
 
 
     rsi = result.get(
-
         "rsi",
-
         "N/A"
-
     )
 
 
     candlestick = result.get(
-
         "candlestick",
-
         "N/A"
-
     )
 
 
     news_status = result.get(
-
         "news_status",
-
         "UNKNOWN"
-
     )
 
 
     entry = result.get(
-
         "entry",
-
         "N/A"
-
     )
 
 
     take_profit = result.get(
-
         "take_profit",
-
         "N/A"
-
     )
 
 
     stop_loss = result.get(
-
         "stop_loss",
-
         "N/A"
-
     )
 
 
@@ -253,13 +230,10 @@ def format_signal(result):
     if news_status in [
 
         "SAFE",
-
         "CLEAR",
-
         "NO_HIGH_IMPACT_NEWS"
 
     ]:
-
 
         news_text = "SAFE ✅"
 
@@ -267,17 +241,14 @@ def format_signal(result):
     elif news_status in [
 
         "BLOCKED",
-
         "HIGH_IMPACT_NEWS"
 
     ]:
-
 
         news_text = "BLOCKED 🔴"
 
 
     else:
-
 
         news_text = str(news_status)
 
@@ -289,7 +260,11 @@ def format_signal(result):
     if signal in ["BUY", "SELL"]:
 
 
-        signal_icon = "🟢" if signal == "BUY" else "🔴"
+        signal_icon = (
+            "🟢"
+            if signal == "BUY"
+            else "🔴"
+        )
 
 
         message = (
@@ -327,11 +302,8 @@ def format_signal(result):
 
 
         reason = result.get(
-
             "reason",
-
             "Waiting for a stronger setup."
-
         )
 
 
@@ -372,11 +344,8 @@ def can_make_manual_request(chat_id):
 
 
     last_request = LAST_MANUAL_REQUEST.get(
-
         chat_id,
-
         0
-
     )
 
 
@@ -387,9 +356,7 @@ def can_make_manual_request(chat_id):
 
 
         remaining = int(
-
             MANUAL_REQUEST_COOLDOWN - elapsed
-
         ) + 1
 
 
@@ -412,7 +379,9 @@ def get_cached_signal(pair, timeframe):
     cache_key = f"{pair}_{timeframe}"
 
 
-    cached = SIGNAL_CACHE.get(cache_key)
+    cached = SIGNAL_CACHE.get(
+        cache_key
+    )
 
 
     if not cached:
@@ -422,7 +391,10 @@ def get_cached_signal(pair, timeframe):
 
     result = cached.get("result")
 
-    saved_time = cached.get("time", 0)
+    saved_time = cached.get(
+        "time",
+        0
+    )
 
 
     if time.time() - saved_time < CACHE_DURATION:
@@ -472,11 +444,8 @@ def get_selected_timeframe(chat_id):
 
 
     return USER_TIMEFRAMES.get(
-
         chat_id,
-
         TIMEFRAME
-
     )
 
 
@@ -493,48 +462,44 @@ def process_timeframe_selection(
     timeframe_options = {
 
 
+        # 1 MINUTE
+
         "1": "1M",
-
         "1M": "1M",
-
         "1 MIN": "1M",
-
         "1 MINUTE": "1M",
-
         "🕐 1 MIN": "1M",
+        "🕐1 MIN": "1M",
 
+
+        # 2 MINUTES
 
         "2": "2M",
-
         "2M": "2M",
-
         "2 MIN": "2M",
-
         "2 MINUTE": "2M",
-
         "🕐 2 MIN": "2M",
+        "🕐2 MIN": "2M",
 
+
+        # 3 MINUTES
 
         "3": "3M",
-
         "3M": "3M",
-
         "3 MIN": "3M",
-
         "3 MINUTE": "3M",
-
         "🕐 3 MIN": "3M",
+        "🕐3 MIN": "3M",
 
+
+        # 5 MINUTES
 
         "5": "5M",
-
         "5M": "5M",
-
         "5 MIN": "5M",
-
         "5 MINUTE": "5M",
-
-        "🕐 5 MIN": "5M"
+        "🕐 5 MIN": "5M",
+        "🕐5 MIN": "5M"
 
     }
 
@@ -555,8 +520,11 @@ def process_timeframe_selection(
         chat_id,
 
         f"✅ Timeframe changed successfully to {selected}\n\n"
+
         "Now send a Forex pair.\n\n"
+
         "Example:\n"
+
         "EUR/USD"
 
     )
@@ -609,7 +577,14 @@ def send_welcome_message(chat_id):
         "Then send a Forex pair.\n\n"
 
         "Example:\n"
-        "EUR/USD"
+
+        "EUR/USD\n\n"
+
+        "Commands:\n"
+
+        "/HELP\n"
+        "/TIMEFRAME\n"
+        "/STATUS"
 
     )
 
@@ -617,6 +592,57 @@ def send_welcome_message(chat_id):
     send_message(
         chat_id,
         welcome
+    )
+
+
+# =========================================================
+# SEND HELP MESSAGE
+# =========================================================
+
+def send_help_message(chat_id):
+
+
+    selected_timeframe = (
+        get_selected_timeframe(
+            chat_id
+        )
+    )
+
+
+    help_message = (
+
+        "🤖 SHEFIU AI FOREX VIP\n\n"
+
+        f"⏱ Current Timeframe: "
+        f"{selected_timeframe}\n\n"
+
+        "Choose timeframe by sending:\n\n"
+
+        "🕐 1 MIN\n"
+        "🕐 2 MIN\n"
+        "🕐 3 MIN\n"
+        "🕐 5 MIN\n\n"
+
+        "Then send a Forex pair:\n\n"
+
+        "EUR/USD\n"
+        "GBP/USD\n"
+        "XAU/USD\n"
+        "GBP/JPY\n\n"
+
+        "Commands:\n"
+
+        "/START\n"
+        "/HELP\n"
+        "/TIMEFRAME\n"
+        "/STATUS"
+
+    )
+
+
+    send_message(
+        chat_id,
+        help_message
     )
 
 
@@ -675,9 +701,9 @@ def run_telegram_bot():
 
                 "timeout": 30,
 
-                "allowed_updates": [
-                    "message"
-                ]
+                "allowed_updates": json.dumps(
+                    ["message"]
+                )
 
             }
 
@@ -709,11 +735,8 @@ def run_telegram_bot():
 
 
                 print(
-
                     "Telegram getUpdates error:",
-
                     data
-
                 )
 
 
@@ -792,6 +815,11 @@ def run_telegram_bot():
                 text = raw_text.strip().upper()
 
 
+                # Handle commands safely
+
+                command = text.split("@")[0]
+
+
                 print(
                     f"Telegram message received: "
                     f"{text}"
@@ -802,7 +830,7 @@ def run_telegram_bot():
                 # START COMMAND
                 # =========================================
 
-                if text == "/START":
+                if command == "/START":
 
 
                     send_welcome_message(
@@ -817,49 +845,11 @@ def run_telegram_bot():
                 # HELP COMMAND
                 # =========================================
 
-                if text == "/HELP":
+                if command == "/HELP":
 
 
-                    selected_timeframe = (
-                        get_selected_timeframe(
-                            chat_id
-                        )
-                    )
-
-
-                    help_message = (
-
-                        "🤖 SHEFIU AI FOREX VIP\n\n"
-
-                        f"⏱ Current Timeframe: "
-                        f"{selected_timeframe}\n\n"
-
-                        "Choose timeframe by sending:\n\n"
-
-                        "🕐 1 MIN\n"
-                        "🕐 2 MIN\n"
-                        "🕐 3 MIN\n"
-                        "🕐 5 MIN\n\n"
-
-                        "Then send a Forex pair:\n\n"
-
-                        "EUR/USD\n"
-                        "GBP/USD\n"
-                        "XAU/USD\n"
-                        "GBP/JPY\n\n"
-
-                        "Commands:\n"
-                        "/START\n"
-                        "/HELP\n"
-                        "/TIMEFRAME\n"
-                        "/STATUS"
-
-                    )
-
-
-                    send_message(
-                        chat_id,
-                        help_message
+                    send_help_message(
+                        chat_id
                     )
 
 
@@ -870,7 +860,7 @@ def run_telegram_bot():
                 # TIMEFRAME COMMAND
                 # =========================================
 
-                if text == "/TIMEFRAME":
+                if command == "/TIMEFRAME":
 
 
                     selected_timeframe = (
@@ -906,7 +896,7 @@ def run_telegram_bot():
                 # STATUS COMMAND
                 # =========================================
 
-                if text == "/STATUS":
+                if command == "/STATUS":
 
 
                     selected_timeframe = (
@@ -922,7 +912,7 @@ def run_telegram_bot():
 
                         "🤖 SHEFIU AI FOREX VIP\n\n"
 
-                        "🟢 Bot Status: ONLINE\n"
+                        "🟢 Bot Status: ONLINE\n\n"
 
                         f"⏱ Selected Timeframe: "
                         f"{selected_timeframe}\n\n"
@@ -961,11 +951,9 @@ def run_telegram_bot():
 
 
                     selected_timeframe = (
-
                         get_selected_timeframe(
                             chat_id
                         )
-
                     )
 
 
@@ -974,12 +962,10 @@ def run_telegram_bot():
                     # =====================================
 
                     cached_result = (
-
                         get_cached_signal(
                             text,
                             selected_timeframe
                         )
-
                     )
 
 
@@ -990,8 +976,11 @@ def run_telegram_bot():
 
                             chat_id,
 
-                            f"📋 Recent {selected_timeframe} "
-                            f"analysis for {text}"
+                            f"📋 Recent "
+                            f"{selected_timeframe} analysis "
+                            f"for {text}\n\n"
+
+                            "Using cached analysis."
 
                         )
 
@@ -1015,11 +1004,9 @@ def run_telegram_bot():
                     # =====================================
 
                     allowed, remaining = (
-
                         can_make_manual_request(
                             chat_id
                         )
-
                     )
 
 
@@ -1032,7 +1019,7 @@ def run_telegram_bot():
 
                             f"⏳ Please wait "
                             f"{remaining} seconds before "
-                            f"requesting another new analysis."
+                            f"requesting another analysis."
 
                         )
 
@@ -1049,8 +1036,10 @@ def run_telegram_bot():
                         chat_id,
 
                         f"🔍 Analyzing {text}\n\n"
+
                         f"⏱ Timeframe: "
                         f"{selected_timeframe}\n\n"
+
                         "Please wait..."
 
                     )
@@ -1106,9 +1095,7 @@ def run_telegram_bot():
 
 
                         print(
-
                             f"Manual analysis error: {e}"
-
                         )
 
 
@@ -1117,6 +1104,7 @@ def run_telegram_bot():
                             chat_id,
 
                             "❌ Error analyzing this pair.\n\n"
+
                             "Please try again later."
 
                         )
@@ -1137,6 +1125,7 @@ def run_telegram_bot():
                     "timeframe, or Forex pair.\n\n"
 
                     "Example:\n"
+
                     "EUR/USD\n\n"
 
                     "Send /HELP for instructions."
