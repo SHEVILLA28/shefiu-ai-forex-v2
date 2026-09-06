@@ -20,7 +20,7 @@ from metaapi_trader import (
 
 # =========================================================
 # SHEFIU AI FOREX V2
-# AUTOMATIC SIGNAL + TELEGRAM + METAAPI TRADING
+# AUTOMATIC + MANUAL + TELEGRAM + METAAPI TRADING
 # =========================================================
 
 
@@ -106,8 +106,11 @@ def send_telegram_message(message):
 
 
     data = {
+
         "chat_id": CHAT_ID,
+
         "text": message
+
     }
 
 
@@ -176,6 +179,106 @@ FOREX_PAIRS = [
 
 
 # =========================================================
+# AUTOMATIC SCANNER CONTROL
+# =========================================================
+
+AUTO_SCAN_ENABLED = False
+
+AUTO_TIMEFRAME = "5M"
+
+AUTO_SETTINGS_LOCK = threading.Lock()
+
+
+# =========================================================
+# SET AUTOMATIC SCANNER
+# =========================================================
+
+def set_auto_scan(
+    enabled=None,
+    timeframe=None
+):
+
+    global AUTO_SCAN_ENABLED
+    global AUTO_TIMEFRAME
+
+
+    with AUTO_SETTINGS_LOCK:
+
+        if enabled is not None:
+
+            AUTO_SCAN_ENABLED = bool(
+                enabled
+            )
+
+
+        if timeframe is not None:
+
+            valid_timeframes = [
+
+                "1M",
+                "2M",
+                "3M",
+                "5M"
+
+            ]
+
+
+            if timeframe in valid_timeframes:
+
+                AUTO_TIMEFRAME = timeframe
+
+
+        print(
+
+            f"Automatic scanner settings | "
+            f"Enabled: {AUTO_SCAN_ENABLED} | "
+            f"Timeframe: {AUTO_TIMEFRAME}"
+
+        )
+
+
+# =========================================================
+# GET AUTOMATIC SCANNER SETTINGS
+# =========================================================
+
+def get_auto_settings():
+
+    with AUTO_SETTINGS_LOCK:
+
+        return (
+
+            AUTO_SCAN_ENABLED,
+            AUTO_TIMEFRAME
+
+        )
+
+
+# =========================================================
+# GET SCAN INTERVAL
+# =========================================================
+
+def get_scan_interval(timeframe):
+
+    intervals = {
+
+        "1M": 60,
+
+        "2M": 120,
+
+        "3M": 180,
+
+        "5M": 300
+
+    }
+
+
+    return intervals.get(
+        timeframe,
+        300
+    )
+
+
+# =========================================================
 # METAAPI SYMBOL CONVERSION
 # =========================================================
 
@@ -187,22 +290,6 @@ def convert_to_mt5_symbol(pair):
     )
 
     return symbol + "m"
-
-
-# =========================================================
-# BOT SETTINGS
-# =========================================================
-
-TIMEFRAME = "5M"
-
-
-# =========================================================
-# SCAN SETTINGS
-# =========================================================
-
-# Scan every 5 minutes
-
-SCAN_INTERVAL = 300
 
 
 # =========================================================
@@ -317,8 +404,6 @@ def check_trade_permission(symbol):
         )
 
 
-        # Maximum open trades protection
-
         if open_trade_count >= MAX_OPEN_TRADES:
 
             print(
@@ -332,8 +417,6 @@ def check_trade_permission(symbol):
                 open_trade_count
             )
 
-
-        # Same symbol protection
 
         if symbol_has_open_position(
             positions,
@@ -352,8 +435,6 @@ def check_trade_permission(symbol):
                 open_trade_count
             )
 
-
-        # Trade cooldown protection
 
         cooldown_allowed, remaining = (
             check_trade_cooldown(
@@ -421,7 +502,12 @@ def execute_trade(result, pair):
     )
 
 
-    if signal not in ["BUY", "SELL"]:
+    if signal not in [
+
+        "BUY",
+        "SELL"
+
+    ]:
 
         return (
             False,
@@ -431,9 +517,13 @@ def execute_trade(result, pair):
 
     try:
 
-        stop_loss = float(stop_loss)
+        stop_loss = float(
+            stop_loss
+        )
 
-        take_profit = float(take_profit)
+        take_profit = float(
+            take_profit
+        )
 
 
     except Exception as e:
@@ -456,14 +546,14 @@ def execute_trade(result, pair):
 
 
     print(
+
         f"Trade setup for {symbol} | "
         f"Signal: {signal} | "
         f"SL: {stop_loss} | "
         f"TP: {take_profit}"
+
     )
 
-
-    # Check trade protection
 
     allowed, status, open_trade_count = (
         check_trade_permission(
@@ -487,8 +577,6 @@ def execute_trade(result, pair):
 
     try:
 
-        # BUY ORDER
-
         if signal == "BUY":
 
             print(
@@ -497,12 +585,16 @@ def execute_trade(result, pair):
 
 
             result_order = asyncio.run(
+
                 place_buy_order(
+
                     symbol,
                     TRADE_VOLUME,
                     stop_loss,
                     take_profit
+
                 )
+
             )
 
 
@@ -512,8 +604,6 @@ def execute_trade(result, pair):
             )
 
 
-        # SELL ORDER
-
         elif signal == "SELL":
 
             print(
@@ -522,12 +612,16 @@ def execute_trade(result, pair):
 
 
             result_order = asyncio.run(
+
                 place_sell_order(
+
                     symbol,
                     TRADE_VOLUME,
                     stop_loss,
                     take_profit
+
                 )
+
             )
 
 
@@ -569,7 +663,7 @@ def execute_trade(result, pair):
 def run_automatic_scanner():
 
     print(
-        "Automatic Forex scanner started."
+        "Automatic Forex scanner thread started."
     )
 
 
@@ -577,12 +671,42 @@ def run_automatic_scanner():
 
         try:
 
+            enabled, timeframe = (
+                get_auto_settings()
+            )
+
+
+            # =============================================
+            # AUTO SCAN OFF
+            # =============================================
+
+            if not enabled:
+
+                print(
+                    "Automatic scanner is OFF. "
+                    "Waiting for AUTO SCAN ON..."
+                )
+
+
+                time.sleep(5)
+
+                continue
+
+
+            # =============================================
+            # AUTO SCAN ON
+            # =============================================
+
             print(
                 "===================================="
             )
 
             print(
-                "Starting Forex market scan..."
+                "Starting automatic Forex scan..."
+            )
+
+            print(
+                f"Selected timeframe: {timeframe}"
             )
 
             print(
@@ -592,16 +716,36 @@ def run_automatic_scanner():
 
             for pair in FOREX_PAIRS:
 
+                # Check again in case AUTO OFF
+                # was pressed during scanning
+
+                enabled, current_timeframe = (
+                    get_auto_settings()
+                )
+
+
+                if not enabled:
+
+                    print(
+                        "AUTO SCAN turned OFF."
+                    )
+
+                    break
+
+
                 try:
 
                     print(
-                        f"Analyzing {pair}..."
+                        f"Analyzing {pair} | "
+                        f"{current_timeframe}"
                     )
 
 
                     result = get_signal(
+
                         pair,
-                        TIMEFRAME
+                        current_timeframe
+
                     )
 
 
@@ -612,6 +756,7 @@ def run_automatic_scanner():
 
 
                     print(
+
                         f"Result for {pair}: "
                         f"{signal} | "
                         f"Trend: "
@@ -620,6 +765,7 @@ def run_automatic_scanner():
                         f"{result.get('rsi')} | "
                         f"Confidence: "
                         f"{result.get('confidence')}%"
+
                     )
 
 
@@ -627,31 +773,45 @@ def run_automatic_scanner():
                     # BUY OR SELL SIGNAL
                     # =====================================
 
-                    if signal in ["BUY", "SELL"]:
+                    if signal in [
+
+                        "BUY",
+                        "SELL"
+
+                    ]:
+
+                        signal_key = (
+                            f"{pair}_{current_timeframe}"
+                        )
+
 
                         previous_signal = (
                             LAST_SIGNAL.get(
-                                pair
+                                signal_key
                             )
                         )
 
 
-                        # Duplicate signal protection
+                        # Duplicate protection
 
                         if previous_signal == signal:
 
                             print(
+
                                 f"Duplicate {signal} "
                                 f"signal ignored for "
                                 f"{pair}"
+
                             )
 
 
                         else:
 
                             print(
+
                                 f"NEW {signal} SIGNAL "
                                 f"FOR {pair}"
+
                             )
 
 
@@ -663,20 +823,11 @@ def run_automatic_scanner():
                             )
 
 
-                            # =================================
-                            # TRADE SUCCESS
-                            # =================================
-
                             if trade_success:
 
-                                LAST_SIGNAL[pair] = signal
-
-
-                                print(
-                                    f"{signal} trade "
-                                    f"placed successfully "
-                                    f"for {pair}"
-                                )
+                                LAST_SIGNAL[
+                                    signal_key
+                                ] = signal
 
 
                                 message = format_signal(
@@ -687,6 +838,7 @@ def run_automatic_scanner():
                                 message += (
 
                                     "\n\n"
+
                                     "🤖 AUTOMATIC TRADE "
                                     "PLACED SUCCESSFULLY\n\n"
 
@@ -716,9 +868,11 @@ def run_automatic_scanner():
                             else:
 
                                 print(
+
                                     f"Trade not placed for "
                                     f"{pair}: "
                                     f"{trade_status}"
+
                                 )
 
 
@@ -728,7 +882,14 @@ def run_automatic_scanner():
 
                     else:
 
-                        LAST_SIGNAL[pair] = None
+                        signal_key = (
+                            f"{pair}_{current_timeframe}"
+                        )
+
+
+                        LAST_SIGNAL[
+                            signal_key
+                        ] = None
 
 
                     # API protection
@@ -743,20 +904,72 @@ def run_automatic_scanner():
                         f"{pair}: {e}"
                     )
 
+
                     time.sleep(3)
 
 
-            print(
-                "===================================="
+            # =============================================
+            # WAIT FOR NEXT SCAN
+            # =============================================
+
+            enabled, timeframe = (
+                get_auto_settings()
             )
 
-            print(
-                "Forex scan completed."
-            )
 
-            print(
-                "===================================="
-            )
+            if enabled:
+
+                scan_interval = (
+                    get_scan_interval(
+                        timeframe
+                    )
+                )
+
+
+                print(
+                    "===================================="
+                )
+
+                print(
+                    "Forex scan completed."
+                )
+
+                print(
+                    f"Waiting {scan_interval} seconds "
+                    "before next scan..."
+                )
+
+                print(
+                    "===================================="
+                )
+
+
+                # Check AUTO ON/OFF every 5 seconds
+                # while waiting
+
+                waited = 0
+
+
+                while waited < scan_interval:
+
+                    enabled, _ = (
+                        get_auto_settings()
+                    )
+
+
+                    if not enabled:
+
+                        print(
+                            "AUTO SCAN turned OFF "
+                            "while waiting."
+                        )
+
+                        break
+
+
+                    time.sleep(5)
+
+                    waited += 5
 
 
         except Exception as e:
@@ -766,15 +979,7 @@ def run_automatic_scanner():
             )
 
 
-        print(
-            f"Waiting {SCAN_INTERVAL} "
-            f"seconds before next scan..."
-        )
-
-
-        time.sleep(
-            SCAN_INTERVAL
-        )
+            time.sleep(5)
 
 
 # =========================================================
@@ -792,7 +997,11 @@ if __name__ == "__main__":
     )
 
     print(
-        "Automatic Trading System: ACTIVE"
+        "Automatic Trading System: READY"
+    )
+
+    print(
+        "Automatic Scanner: OFF"
     )
 
     print(
@@ -810,58 +1019,77 @@ if __name__ == "__main__":
     )
 
     print(
-        f"Scan Interval: "
-        f"{SCAN_INTERVAL} seconds"
-    )
-
-    print(
         "===================================="
     )
 
 
-    # Start health server
+    # =============================================
+    # START HEALTH SERVER
+    # =============================================
 
     health_thread = threading.Thread(
+
         target=run_health_server,
+
         daemon=True
+
     )
 
+
     health_thread.start()
+
 
     print(
         "Health server started."
     )
 
 
-    # Start automatic scanner
+    # =============================================
+    # START AUTOMATIC SCANNER
+    # ONLY ONE THREAD
+    # =============================================
 
     scanner_thread = threading.Thread(
+
         target=run_automatic_scanner,
+
         daemon=True
+
     )
+
 
     scanner_thread.start()
 
+
     print(
-        "Automatic Forex scanner started."
+        "Automatic scanner thread started."
     )
 
 
-    # Start manual Telegram bot
+    # =============================================
+    # START TELEGRAM BOT
+    # =============================================
 
     telegram_thread = threading.Thread(
+
         target=run_telegram_bot,
+
         daemon=True
+
     )
+
 
     telegram_thread.start()
 
+
     print(
-        "Manual Telegram bot started."
+        "Telegram bot started."
     )
 
 
-    # Keep bot running
+    # =============================================
+    # KEEP BOT RUNNING
+    # =============================================
 
     while True:
 
