@@ -41,7 +41,18 @@ FOREX_PAIRS = [
 ]
 
 
+# =========================================================
+# DEFAULT TIMEFRAME
+# =========================================================
+
 TIMEFRAME = "5M"
+
+
+# =========================================================
+# SELECTED TIMEFRAME FOR EACH TELEGRAM USER
+# =========================================================
+
+USER_TIMEFRAMES = {}
 
 
 # =========================================================
@@ -51,6 +62,11 @@ TIMEFRAME = "5M"
 MANUAL_REQUEST_COOLDOWN = 60
 
 LAST_MANUAL_REQUEST = {}
+
+
+# =========================================================
+# SIGNAL CACHE
+# =========================================================
 
 SIGNAL_CACHE = {}
 
@@ -119,11 +135,9 @@ def send_message(chat_id, text):
 
 # =========================================================
 # FORMAT SIGNAL
-# SHORT PROFESSIONAL FORMAT
 # =========================================================
 
 def format_signal(result):
-
 
     signal = result.get(
         "signal",
@@ -192,25 +206,6 @@ def format_signal(result):
 
 
     # =====================================================
-    # SIGNAL ICON
-    # =====================================================
-
-    if signal == "BUY":
-
-        signal_icon = "🟢"
-
-
-    elif signal == "SELL":
-
-        signal_icon = "🔴"
-
-
-    else:
-
-        signal_icon = "⚪"
-
-
-    # =====================================================
     # NEWS STATUS
     # =====================================================
 
@@ -241,7 +236,7 @@ def format_signal(result):
 
 
     # =====================================================
-    # SHORT BUY / SELL MESSAGE
+    # BUY / SELL MESSAGE
     # =====================================================
 
     if signal in ["BUY", "SELL"]:
@@ -274,7 +269,7 @@ def format_signal(result):
 
 
     # =====================================================
-    # SHORT NO TRADE MESSAGE
+    # NO TRADE MESSAGE
     # =====================================================
 
     else:
@@ -331,7 +326,6 @@ def can_make_manual_request(chat_id):
 
     if elapsed < MANUAL_REQUEST_COOLDOWN:
 
-
         remaining = int(
             MANUAL_REQUEST_COOLDOWN - elapsed
         ) + 1
@@ -350,9 +344,17 @@ def can_make_manual_request(chat_id):
 # GET CACHED SIGNAL
 # =========================================================
 
-def get_cached_signal(pair):
+def get_cached_signal(
+    pair,
+    timeframe
+):
 
-    cached = SIGNAL_CACHE.get(pair)
+    cache_key = f"{pair}_{timeframe}"
+
+
+    cached = SIGNAL_CACHE.get(
+        cache_key
+    )
 
 
     if not cached:
@@ -377,15 +379,34 @@ def get_cached_signal(pair):
 # SAVE SIGNAL TO CACHE
 # =========================================================
 
-def save_signal_to_cache(pair, result):
+def save_signal_to_cache(
+    pair,
+    timeframe,
+    result
+):
 
-    SIGNAL_CACHE[pair] = {
+    cache_key = f"{pair}_{timeframe}"
+
+
+    SIGNAL_CACHE[cache_key] = {
 
         "result": result,
 
         "time": time.time()
 
     }
+
+
+# =========================================================
+# GET SELECTED TIMEFRAME
+# =========================================================
+
+def get_selected_timeframe(chat_id):
+
+    return USER_TIMEFRAMES.get(
+        chat_id,
+        TIMEFRAME
+    )
 
 
 # =========================================================
@@ -404,9 +425,7 @@ def run_telegram_bot():
 
     while True:
 
-
         try:
-
 
             if not BOT_TOKEN:
 
@@ -447,12 +466,10 @@ def run_telegram_bot():
 
             if not data.get("ok"):
 
-
                 print(
                     "Telegram getUpdates error:",
                     data
                 )
-
 
                 time.sleep(5)
 
@@ -463,7 +480,6 @@ def run_telegram_bot():
                 "result",
                 []
             ):
-
 
                 offset = (
                     update["update_id"] + 1
@@ -492,25 +508,100 @@ def run_telegram_bot():
 
 
                 # =============================================
+                # TIMEFRAME SELECTION
+                # =============================================
+
+                if text in [
+                    "1 MIN",
+                    "🕐 1 MIN",
+                    "🕐1 MIN"
+                ]:
+
+                    USER_TIMEFRAMES[chat_id] = "1M"
+
+                    send_message(
+                        chat_id,
+                        "✅ Timeframe changed to 1M"
+                    )
+
+                    continue
+
+
+                elif text in [
+                    "2 MIN",
+                    "🕐 2 MIN",
+                    "🕐2 MIN"
+                ]:
+
+                    USER_TIMEFRAMES[chat_id] = "2M"
+
+                    send_message(
+                        chat_id,
+                        "✅ Timeframe changed to 2M"
+                    )
+
+                    continue
+
+
+                elif text in [
+                    "3 MIN",
+                    "🕐 3 MIN",
+                    "🕐3 MIN"
+                ]:
+
+                    USER_TIMEFRAMES[chat_id] = "3M"
+
+                    send_message(
+                        chat_id,
+                        "✅ Timeframe changed to 3M"
+                    )
+
+                    continue
+
+
+                elif text in [
+                    "5 MIN",
+                    "🕐 5 MIN",
+                    "🕐5 MIN"
+                ]:
+
+                    USER_TIMEFRAMES[chat_id] = "5M"
+
+                    send_message(
+                        chat_id,
+                        "✅ Timeframe changed to 5M"
+                    )
+
+                    continue
+
+
+                # =============================================
                 # MANUAL FOREX PAIR REQUEST
                 # =============================================
 
                 if text in FOREX_PAIRS:
 
+                    selected_timeframe = (
+                        get_selected_timeframe(
+                            chat_id
+                        )
+                    )
+
 
                     cached_result = get_cached_signal(
-                        text
+                        text,
+                        selected_timeframe
                     )
 
 
                     if cached_result:
 
-
                         send_message(
 
                             chat_id,
 
-                            f"📋 Recent analysis for {text}"
+                            f"📋 Recent {selected_timeframe} "
+                            f"analysis for {text}"
 
                         )
 
@@ -538,7 +629,6 @@ def run_telegram_bot():
 
                     if not allowed:
 
-
                         send_message(
 
                             chat_id,
@@ -556,22 +646,23 @@ def run_telegram_bot():
 
                         chat_id,
 
-                        f"🔍 Analyzing {text}..."
+                        f"🔍 Analyzing {text} "
+                        f"on {selected_timeframe}..."
 
                     )
 
 
                     try:
 
-
                         result = get_signal(
                             text,
-                            TIMEFRAME
+                            selected_timeframe
                         )
 
 
                         save_signal_to_cache(
                             text,
+                            selected_timeframe,
                             result
                         )
 
@@ -586,7 +677,6 @@ def run_telegram_bot():
 
 
                     except Exception as e:
-
 
                         print(
                             f"Manual analysis error: {e}"
@@ -609,9 +699,15 @@ def run_telegram_bot():
 
                 elif text == "/START":
 
-
                     pairs_text = "\n".join(
                         FOREX_PAIRS
+                    )
+
+
+                    selected_timeframe = (
+                        get_selected_timeframe(
+                            chat_id
+                        )
                     )
 
 
@@ -623,7 +719,14 @@ def run_telegram_bot():
 
                         f"{pairs_text}\n\n"
 
-                        f"⏱ Timeframe: {TIMEFRAME}\n\n"
+                        f"⏱ Selected Timeframe: "
+                        f"{selected_timeframe}\n\n"
+
+                        "Choose your timeframe:\n"
+                        "🕐 1 MIN\n"
+                        "🕐 2 MIN\n"
+                        "🕐 3 MIN\n"
+                        "🕐 5 MIN\n\n"
 
                         "Example:\n"
                         "EUR/USD"
@@ -643,6 +746,12 @@ def run_telegram_bot():
 
                 elif text == "/HELP":
 
+                    selected_timeframe = (
+                        get_selected_timeframe(
+                            chat_id
+                        )
+                    )
+
 
                     send_message(
 
@@ -650,30 +759,30 @@ def run_telegram_bot():
 
                         "🤖 SHEFIU AI FOREX VIP\n\n"
 
-                        "Send a Forex pair to analyze.\n\n"
+                        f"⏱ Current Timeframe: "
+                        f"{selected_timeframe}\n\n"
 
-                        "Example:\n"
+                        "Choose timeframe by sending:\n\n"
+
+                        "🕐 1 MIN\n"
+                        "🕐 2 MIN\n"
+                        "🕐 3 MIN\n"
+                        "🕐 5 MIN\n\n"
+
+                        "Then send a Forex pair:\n\n"
+
                         "EUR/USD\n"
                         "GBP/USD\n"
-                        "XAU/USD\n\n"
-
-                        "The bot checks:\n"
-
-                        "📈 Trend\n"
-                        "📊 RSI\n"
-                        "🕯 Candlestick\n"
-                        "📰 Economic News\n"
-                        "🎯 Entry / TP / SL"
+                        "XAU/USD\n"
+                        "GBP/JPY"
 
                     )
 
 
         except Exception as e:
 
-
             print(
                 f"Telegram bot error: {e}"
             )
-
 
             time.sleep(5)
