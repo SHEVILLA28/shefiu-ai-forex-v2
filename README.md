@@ -13,7 +13,8 @@
 Optional controls are in `.env.example`.
 
 ## Important
-- The bot pauses Twelve Data requests after a provider rate-limit response instead of continuing to hammer the API.
+- The bot scans selected pairs in small rotating batches to reduce Twelve Data request bursts.
+- The bot pauses all Twelve Data requests for a longer cooldown after a provider rate-limit response instead of continuing to hammer the API.
 - The scanner derives the 15-minute confirmation from 5-minute candles when possible, reducing API calls.
 - Automatic trading has maximum-open-trades, same-symbol, cooldown, and SL/TP direction checks.
 - Test the corrected deployment on a demo account before enabling real-money trading.

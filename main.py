@@ -173,6 +173,11 @@ TIMEFRAME = os.getenv("DEFAULT_TIMEFRAME", "5M").upper()
 
 SCAN_INTERVAL = max(60, int(os.getenv("SCAN_INTERVAL_SECONDS", "300")))
 
+# Limit how many pairs are requested in one scan cycle. This prevents a long
+# selected-pair list from exhausting the market-data provider quota at once.
+MAX_PAIRS_PER_SCAN = max(1, int(os.getenv("MAX_PAIRS_PER_SCAN", "2")))
+PAIR_SCAN_CURSOR = 0
+
 
 # =========================================================
 # TRADE SETTINGS
@@ -765,10 +770,27 @@ def run_automatic_scanner():
 
 
             # =============================================
-            # SCAN ONLY SELECTED FOREX PAIRS
+            # SCAN A SMALL ROTATING BATCH OF SELECTED PAIRS
             # =============================================
+            # Twelve Data can rate-limit a free/limited API key. Instead of
+            # requesting every selected pair in one burst, scan a rotating
+            # batch and continue with the next batch on the next cycle.
+            global PAIR_SCAN_CURSOR
 
-            for pair in selected_pairs:
+            batch_size = min(MAX_PAIRS_PER_SCAN, len(selected_pairs))
+            start = PAIR_SCAN_CURSOR % len(selected_pairs)
+            scan_pairs = [
+                selected_pairs[(start + offset) % len(selected_pairs)]
+                for offset in range(batch_size)
+            ]
+            PAIR_SCAN_CURSOR = (start + batch_size) % len(selected_pairs)
+
+            print(
+                f"Scanning {len(scan_pairs)}/{len(selected_pairs)} selected pairs this cycle: "
+                f"{scan_pairs}"
+            )
+
+            for pair in scan_pairs:
 
                 try:
 
@@ -1117,6 +1139,11 @@ if __name__ == "__main__":
     print(
         f"Scan Interval: "
         f"{SCAN_INTERVAL} seconds"
+    )
+
+    print(
+        f"Maximum Pairs Per Scan: "
+        f"{MAX_PAIRS_PER_SCAN}"
     )
 
     print(
