@@ -21,6 +21,31 @@ MIN_CANDLES = 100
 
 
 # =========================================================
+# TIMEFRAME SETTINGS
+# =========================================================
+
+# 2M and 3M are created from 1-minute candles.
+RESAMPLED_TIMEFRAMES = {
+    "2M": "2min",
+    "3M": "3min",
+}
+
+
+# Timeframes requested directly from Twelve Data.
+DIRECT_TIMEFRAME_MAP = {
+    "1M": "1min",
+    "5M": "5min",
+    "15M": "15min",
+    "30M": "30min",
+    "1H": "1h",
+}
+
+
+# Higher timeframe used for trend confirmation.
+HIGHER_TIMEFRAME = "15M"
+
+
+# =========================================================
 # TWELVE DATA REQUEST PROTECTION + CACHE
 # =========================================================
 
@@ -28,14 +53,18 @@ API_REQUEST_LOCK = threading.Lock()
 
 LAST_API_REQUEST_TIME = 0.0
 
-# Keep requests deliberately slow enough for an automatic multi-pair scan.
+
+# Keep requests deliberately slow enough for an automatic
+# multi-pair scan.
 MIN_REQUEST_INTERVAL = float(
     os.getenv("TWELVE_DATA_MIN_REQUEST_INTERVAL", "20")
 )
 
-# Cache successful responses so the same candles are not requested again
-# unnecessarily during a scan or by another bot action.
+
+# Cache successful responses so the same candles are not
+# requested again unnecessarily.
 DATA_CACHE = {}
+
 
 CACHE_TTL_SECONDS = {
     "1min": 50,
@@ -47,18 +76,27 @@ CACHE_TTL_SECONDS = {
     "1h": 3000,
 }
 
-# A 429 means the provider has already refused the account.  Do not keep
-# hammering the API pair-by-pair.  Pause all new Twelve Data requests first.
+
+# A 429 means the provider has already refused the account.
+# Pause all new Twelve Data requests first.
 RATE_LIMIT_BLOCK_UNTIL = 0.0
+
 RATE_LIMIT_BLOCK_SECONDS = int(
     os.getenv("TWELVE_DATA_RATE_LIMIT_COOLDOWN", "300")
 )
 
 
 def is_rate_limit_error(message):
+
     """Return True when a scan should stop instead of hammering Twelve Data."""
+
     text = str(message or "").lower()
-    return "rate limit" in text or "cooldown" in text or "too many" in text
+
+    return (
+        "rate limit" in text
+        or "cooldown" in text
+        or "too many" in text
+    )
 
 
 # =========================================================
@@ -107,34 +145,61 @@ def is_market_open():
 
 def _cache_key(symbol, interval, outputsize):
 
-    return (symbol, interval, int(outputsize))
+    return (
+        symbol,
+        interval,
+        int(outputsize)
+    )
 
 
 def _cache_ttl(interval):
 
-    return CACHE_TTL_SECONDS.get(interval, 60)
+    return CACHE_TTL_SECONDS.get(
+        interval,
+        60
+    )
 
 
-def _get_cached_data(symbol, interval, outputsize):
+def _get_cached_data(
+    symbol,
+    interval,
+    outputsize
+):
 
-    key = _cache_key(symbol, interval, outputsize)
+    key = _cache_key(
+        symbol,
+        interval,
+        outputsize
+    )
+
     cached = DATA_CACHE.get(key)
+
 
     if not cached:
         return None
+
 
     cached_time, cached_data = cached
 
     age = time.monotonic() - cached_time
 
+
     if age < _cache_ttl(interval):
+
         print(
-            f"Using cached market data: {symbol} | {interval} "
+            f"Using cached market data: "
+            f"{symbol} | {interval} "
             f"({age:.0f}s old)"
         )
+
         return cached_data
 
-    DATA_CACHE.pop(key, None)
+
+    DATA_CACHE.pop(
+        key,
+        None
+    )
+
     return None
 
 
@@ -146,12 +211,22 @@ def wait_for_rate_limit():
 
     global LAST_API_REQUEST_TIME
 
+
     current_time = time.monotonic()
+
 
     if LAST_API_REQUEST_TIME > 0:
 
-        elapsed = current_time - LAST_API_REQUEST_TIME
-        remaining = MIN_REQUEST_INTERVAL - elapsed
+        elapsed = (
+            current_time
+            - LAST_API_REQUEST_TIME
+        )
+
+        remaining = (
+            MIN_REQUEST_INTERVAL
+            - elapsed
+        )
+
 
         if remaining > 0:
 
@@ -161,6 +236,7 @@ def wait_for_rate_limit():
             )
 
             time.sleep(remaining)
+
 
     LAST_API_REQUEST_TIME = time.monotonic()
 
@@ -177,6 +253,7 @@ def request_twelve_data(
 
     global RATE_LIMIT_BLOCK_UNTIL
 
+
     if not API_KEY:
 
         error_message = (
@@ -191,26 +268,34 @@ def request_twelve_data(
 
     symbol = format_symbol(pair)
 
+
     cached_data = _get_cached_data(
         symbol,
         interval,
         outputsize
     )
 
+
     if cached_data is not None:
+
         return cached_data, None
 
 
-    # If Twelve Data has already returned 429, stop every following pair
-    # from immediately making another request.
-    remaining_block = RATE_LIMIT_BLOCK_UNTIL - time.monotonic()
+    # If Twelve Data has already returned 429,
+    # stop every following pair from immediately
+    # making another request.
+    remaining_block = (
+        RATE_LIMIT_BLOCK_UNTIL
+        - time.monotonic()
+    )
+
 
     if remaining_block > 0:
 
         error_message = (
             "Twelve Data rate limit cooldown is active. "
-            f"Waiting about {int(remaining_block)} seconds before "
-            "requesting market data again."
+            f"Waiting about {int(remaining_block)} seconds "
+            "before requesting market data again."
         )
 
         print(error_message)
@@ -219,36 +304,49 @@ def request_twelve_data(
 
 
     params = {
+
         "symbol": symbol,
+
         "interval": interval,
+
         "outputsize": outputsize,
+
         "apikey": API_KEY,
+
         "format": "JSON"
+
     }
 
 
     with API_REQUEST_LOCK:
 
-        # Another scanner action may have filled the cache while this call
-        # was waiting for the lock.
+
+        # Another scanner action may have filled
+        # the cache while this call was waiting.
         cached_data = _get_cached_data(
             symbol,
             interval,
             outputsize
         )
 
+
         if cached_data is not None:
+
             return cached_data, None
 
 
-        remaining_block = RATE_LIMIT_BLOCK_UNTIL - time.monotonic()
+        remaining_block = (
+            RATE_LIMIT_BLOCK_UNTIL
+            - time.monotonic()
+        )
+
 
         if remaining_block > 0:
 
             error_message = (
                 "Twelve Data rate limit cooldown is active. "
-                f"Waiting about {int(remaining_block)} seconds before "
-                "requesting market data again."
+                f"Waiting about {int(remaining_block)} seconds "
+                "before requesting market data again."
             )
 
             print(error_message)
@@ -259,6 +357,7 @@ def request_twelve_data(
         try:
 
             wait_for_rate_limit()
+
 
             print(
                 f"Requesting market data: "
@@ -280,8 +379,11 @@ def request_twelve_data(
 
 
             try:
+
                 data = response.json()
+
             except Exception:
+
                 return None, (
                     "Twelve Data returned an invalid response."
                 )
@@ -289,35 +391,50 @@ def request_twelve_data(
 
         except requests.RequestException as e:
 
-            error_message = f"Market request error: {e}"
+            error_message = (
+                f"Market request error: {e}"
+            )
+
             print(error_message)
+
             return None, error_message
 
 
         except Exception as e:
 
-            error_message = f"Unexpected market error: {e}"
+            error_message = (
+                f"Unexpected market error: {e}"
+            )
+
             print(error_message)
+
             return None, error_message
 
 
-        # Rate limit: pause the whole provider, not just the current pair.
+        # Rate limit protection.
         if response.status_code == 429:
 
             RATE_LIMIT_BLOCK_UNTIL = (
-                time.monotonic() + RATE_LIMIT_BLOCK_SECONDS
+                time.monotonic()
+                + RATE_LIMIT_BLOCK_SECONDS
             )
+
 
             error_message = (
                 data.get("message")
                 or "Twelve Data rate limit reached."
             )
 
-            print("TWELVE DATA RATE LIMIT REACHED")
+
+            print(
+                "TWELVE DATA RATE LIMIT REACHED"
+            )
+
             print(
                 f"Pausing all Twelve Data requests for "
                 f"{RATE_LIMIT_BLOCK_SECONDS} seconds."
             )
+
 
             return None, error_message
 
@@ -326,32 +443,56 @@ def request_twelve_data(
 
             error_message = (
                 data.get("message")
-                or f"Twelve Data HTTP error {response.status_code}."
+                or (
+                    f"Twelve Data HTTP error "
+                    f"{response.status_code}."
+                )
             )
 
-            print("Twelve Data error:", data)
+
+            print(
+                "Twelve Data error:",
+                data
+            )
+
 
             return None, str(error_message)
 
 
-        if isinstance(data, dict) and data.get("status") == "error":
+        if (
+            isinstance(data, dict)
+            and data.get("status") == "error"
+        ):
 
             error_message = (
                 data.get("message")
                 or "Twelve Data did not return data."
             )
 
-            print("Twelve Data error:", data)
+
+            print(
+                "Twelve Data error:",
+                data
+            )
+
 
             return None, str(error_message)
 
 
         DATA_CACHE[
-            _cache_key(symbol, interval, outputsize)
+            _cache_key(
+                symbol,
+                interval,
+                outputsize
+            )
         ] = (
+
             time.monotonic(),
+
             data
+
         )
+
 
         return data, None
 
@@ -368,8 +509,10 @@ def convert_to_dataframe(data):
     if not values:
 
         return None, (
+
             data.get("message")
             or "No market candles returned."
+
         )
 
 
@@ -380,7 +523,10 @@ def convert_to_dataframe(data):
 
         for candle in values:
 
-            if not isinstance(candle, dict):
+            if not isinstance(
+                candle,
+                dict
+            ):
                 continue
 
 
@@ -504,7 +650,11 @@ def resample_market_data(
         })
 
 
-        resampled = resampled.dropna().reset_index()
+        resampled = (
+            resampled
+            .dropna()
+            .reset_index()
+        )
 
 
         print(
@@ -529,7 +679,10 @@ def resample_market_data(
 # GET MARKET DATA
 # =========================================================
 
-def get_market_data(pair, timeframe):
+def get_market_data(
+    pair,
+    timeframe
+):
 
 
     # =====================================================
@@ -541,8 +694,6 @@ def get_market_data(pair, timeframe):
 
         interval = "1min"
 
-        # Need more than 100 one-minute candles
-        # so resampled candles can reach MIN_CANDLES
         outputsize = 350
 
 
@@ -579,7 +730,8 @@ def get_market_data(pair, timeframe):
         if df is None:
 
             return None, (
-                f"Could not create {timeframe} candles."
+                f"Could not create "
+                f"{timeframe} candles."
             )
 
 
@@ -595,9 +747,14 @@ def get_market_data(pair, timeframe):
         )
 
 
-        # Request enough 5-minute history to derive the 15-minute
-        # confirmation locally, avoiding a second API call per pair.
-        outputsize = 300 if timeframe == "5M" else 150
+        # Request enough 5-minute history
+        # to derive the 15-minute confirmation.
+        outputsize = (
+            300
+            if timeframe == "5M"
+            else 150
+        )
+
 
         data, error_message = (
             request_twelve_data(
@@ -651,13 +808,22 @@ def get_market_data(pair, timeframe):
 # CALCULATE RSI
 # =========================================================
 
-def calculate_rsi(series, period=14):
+def calculate_rsi(
+    series,
+    period=14
+):
 
     delta = series.diff()
 
-    gain = delta.clip(lower=0)
 
-    loss = -delta.clip(upper=0)
+    gain = delta.clip(
+        lower=0
+    )
+
+
+    loss = -delta.clip(
+        upper=0
+    )
 
 
     avg_gain = gain.rolling(
@@ -685,7 +851,10 @@ def calculate_rsi(series, period=14):
 # CALCULATE EMA
 # =========================================================
 
-def calculate_ema(series, period):
+def calculate_ema(
+    series,
+    period
+):
 
     return series.ewm(
         span=period,
@@ -697,11 +866,16 @@ def calculate_ema(series, period):
 # CALCULATE ATR
 # =========================================================
 
-def calculate_atr(df, period=14):
+def calculate_atr(
+    df,
+    period=14
+):
 
     high_low = (
+
         df["high"]
         - df["low"]
+
     )
 
 
@@ -765,8 +939,10 @@ def calculate_macd(
 
 
     macd_line = (
+
         fast_ema
         - slow_ema
+
     )
 
 
@@ -777,15 +953,19 @@ def calculate_macd(
 
 
     histogram = (
+
         macd_line
         - signal_line
+
     )
 
 
     return (
+
         macd_line,
         signal_line,
         histogram
+
     )
 
 
@@ -812,9 +992,12 @@ def calculate_bollinger_bands(
     upper_band = (
 
         middle_band
+
         + (
+
             rolling_std
             * std_multiplier
+
         )
 
     )
@@ -823,18 +1006,23 @@ def calculate_bollinger_bands(
     lower_band = (
 
         middle_band
+
         - (
+
             rolling_std
             * std_multiplier
+
         )
 
     )
 
 
     return (
+
         middle_band,
         upper_band,
         lower_band
+
     )
 
 
@@ -889,39 +1077,80 @@ def get_trend_from_df(df):
 # GET HIGHER TIMEFRAME TREND
 # =========================================================
 
-def get_higher_timeframe_trend(pair, source_df=None, source_timeframe=None):
+def get_higher_timeframe_trend(
+    pair,
+    source_df=None,
+    source_timeframe=None
+):
 
-    # For the normal 5M scanner, build the 15M confirmation from the same
-    # 5-minute candles. This removes one Twelve Data request for every pair.
+    # For the normal 5M scanner,
+    # build the 15M confirmation from the same
+    # 5-minute candles.
     if (
+
         source_df is not None
+
         and source_timeframe == "5M"
+
         and len(source_df) >= 150
+
     ):
+
         try:
-            data = source_df.copy().set_index("datetime")
-            higher_df = (
-                data.resample("15min")
-                .agg({
-                    "open": "first",
-                    "high": "max",
-                    "low": "min",
-                    "close": "last"
-                })
-                .dropna()
-                .reset_index()
+
+            data = source_df.copy().set_index(
+                "datetime"
             )
 
+
+            higher_df = (
+
+                data.resample("15min")
+
+                .agg({
+
+                    "open": "first",
+
+                    "high": "max",
+
+                    "low": "min",
+
+                    "close": "last"
+
+                })
+
+                .dropna()
+
+                .reset_index()
+
+            )
+
+
             if len(higher_df) >= 50:
-                trend = get_trend_from_df(higher_df)
-                print(
-                    f"Higher timeframe trend for {pair}: {trend} "
-                    "(derived from cached 5M candles)"
+
+                trend = get_trend_from_df(
+                    higher_df
                 )
+
+
+                print(
+
+                    f"Higher timeframe trend "
+                    f"for {pair}: {trend} "
+                    "(derived from cached 5M candles)"
+
+                )
+
+
                 return trend
 
+
         except Exception as e:
-            print(f"Higher timeframe resample error: {e}")
+
+            print(
+                f"Higher timeframe "
+                f"resample error: {e}"
+            )
 
 
     df, error_message = get_market_data(
@@ -952,8 +1181,8 @@ def get_higher_timeframe_trend(pair, source_df=None, source_timeframe=None):
 
         print(
 
-            f"Higher timeframe trend for "
-            f"{pair}: {trend}"
+            f"Higher timeframe trend "
+            f"for {pair}: {trend}"
 
         )
 
@@ -986,13 +1215,16 @@ def get_candlestick_signal(df):
         latest["open"]
     )
 
+
     current_high = float(
         latest["high"]
     )
 
+
     current_low = float(
         latest["low"]
     )
+
 
     current_close = float(
         latest["close"]
@@ -1003,20 +1235,25 @@ def get_candlestick_signal(df):
         previous["open"]
     )
 
+
     previous_close = float(
         previous["close"]
     )
 
 
     body = abs(
+
         current_close
         - current_open
+
     )
 
 
     candle_range = (
+
         current_high
         - current_low
+
     )
 
 
@@ -1144,8 +1381,11 @@ def calculate_support_resistance(
 
 
     return (
+
         float(support),
+
         float(resistance)
+
     )
 
 
@@ -1179,6 +1419,7 @@ def format_price(price):
 # =========================================================
 
 def create_no_trade_result(
+
     pair,
     timeframe,
     reason,
@@ -1195,7 +1436,9 @@ def create_no_trade_result(
     bb_middle="N/A",
     bb_upper="N/A",
     bb_lower="N/A"
+
 ):
+
 
     if news_info is None:
 
@@ -1524,12 +1767,19 @@ def get_signal(
     indicator_values = [
 
         rsi,
+
         atr,
+
         macd,
+
         macd_signal,
+
         macd_histogram,
+
         bb_middle,
+
         bb_upper,
+
         bb_lower
 
     ]
@@ -1584,11 +1834,17 @@ def get_signal(
     # =====================================================
 
     higher_trend = (
+
         get_higher_timeframe_trend(
+
             pair,
+
             source_df=df,
+
             source_timeframe=timeframe
+
         )
+
     )
 
 
@@ -1622,8 +1878,11 @@ def get_signal(
 
 
     if (
+
         trend != "WAIT"
+
         and trend != higher_trend
+
     ):
 
         return create_no_trade_result(
@@ -1660,12 +1919,16 @@ def get_signal(
     # =====================================================
 
     distance_to_support = (
+
         close - support
+
     )
 
 
     distance_to_resistance = (
+
         resistance - close
+
     )
 
 
@@ -1718,12 +1981,16 @@ def get_signal(
     # =====================================================
 
     buy_bb_safe = (
+
         close < bb_upper
+
     )
 
 
     sell_bb_safe = (
+
         close > bb_lower
+
     )
 
 
@@ -1732,12 +1999,16 @@ def get_signal(
     # =====================================================
 
     bullish_price = (
+
         close > ema_20
+
     )
 
 
     bullish_momentum = (
+
         close > previous_close
+
     )
 
 
@@ -1789,12 +2060,16 @@ def get_signal(
 
 
         stop_loss = (
+
             close - atr * 1.5
+
         )
 
 
         take_profit = (
+
             close + atr * 3.0
+
         )
 
 
@@ -1864,10 +2139,12 @@ def get_signal(
             ),
 
             "reason": (
+
                 "STRONG BUY confirmed by trend, "
                 "higher timeframe confirmation, RSI, "
                 "MACD, support/resistance safety and "
                 "bullish candlestick confirmation."
+
             )
 
         }
@@ -1878,12 +2155,16 @@ def get_signal(
     # =====================================================
 
     bearish_price = (
+
         close < ema_20
+
     )
 
 
     bearish_momentum = (
+
         close < previous_close
+
     )
 
 
@@ -1935,12 +2216,16 @@ def get_signal(
 
 
         stop_loss = (
+
             close + atr * 1.5
+
         )
 
 
         take_profit = (
+
             close - atr * 3.0
+
         )
 
 
@@ -2010,10 +2295,12 @@ def get_signal(
             ),
 
             "reason": (
+
                 "STRONG SELL confirmed by trend, "
                 "higher timeframe confirmation, RSI, "
                 "MACD, support/resistance safety and "
                 "bearish candlestick confirmation."
+
             )
 
         }
@@ -2023,77 +2310,113 @@ def get_signal(
     # NO TRADE REASON
     # =====================================================
 
-    if trend == "BUY" and not buy_safe_from_resistance:
+    if (
+        trend == "BUY"
+        and not buy_safe_from_resistance
+    ):
 
         reason = (
+
             "BUY trend detected, but price is too "
             "close to resistance."
+
         )
 
 
-    elif trend == "SELL" and not sell_safe_from_support:
+    elif (
+        trend == "SELL"
+        and not sell_safe_from_support
+    ):
 
         reason = (
+
             "SELL trend detected, but price is too "
             "close to support."
+
         )
 
 
-    elif trend == "BUY" and not bullish_macd:
+    elif (
+        trend == "BUY"
+        and not bullish_macd
+    ):
 
         reason = (
+
             "Bullish trend exists, but MACD has not "
             "confirmed bullish momentum yet."
+
         )
 
 
-    elif trend == "SELL" and not bearish_macd:
+    elif (
+        trend == "SELL"
+        and not bearish_macd
+    ):
 
         reason = (
+
             "Bearish trend exists, but MACD has not "
             "confirmed bearish momentum yet."
+
         )
 
 
-    elif trend == "BUY" and not bullish_candle:
+    elif (
+        trend == "BUY"
+        and not bullish_candle
+    ):
 
         reason = (
+
             f"Bullish trend exists, but no strong "
             f"bullish candlestick confirmation yet. "
             f"Pattern: {candlestick}."
+
         )
 
 
-    elif trend == "SELL" and not bearish_candle:
+    elif (
+        trend == "SELL"
+        and not bearish_candle
+    ):
 
         reason = (
+
             f"Bearish trend exists, but no strong "
             f"bearish candlestick confirmation yet. "
             f"Pattern: {candlestick}."
+
         )
 
 
     elif trend == "BUY":
 
         reason = (
+
             "Bullish trend exists, but not all BUY "
             "conditions are strong enough yet."
+
         )
 
 
     elif trend == "SELL":
 
         reason = (
+
             "Bearish trend exists, but not all SELL "
             "conditions are strong enough yet."
+
         )
 
 
     else:
 
         reason = (
+
             "Market direction is unclear. "
             "Waiting for a stronger setup."
+
         )
 
 
@@ -2123,4 +2446,4 @@ def get_signal(
 
         higher_trend=higher_trend
 
-    )
+)
