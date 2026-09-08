@@ -21,6 +21,27 @@ MIN_CANDLES = 100
 
 
 # =========================================================
+# TIMEFRAME SETTINGS
+# =========================================================
+
+# Timeframes requested directly from Twelve Data.
+DIRECT_TIMEFRAME_MAP = {
+    "1M": "1min",
+    "5M": "5min",
+    "15M": "15min",
+    "30M": "30min",
+    "1H": "1h",
+}
+
+# Timeframes built locally from 1-minute candles.
+# Pandas resample rules are used by resample_market_data().
+RESAMPLED_TIMEFRAMES = {
+    "2M": "2min",
+    "3M": "3min",
+}
+
+
+# =========================================================
 # TWELVE DATA REQUEST PROTECTION + CACHE
 # =========================================================
 
