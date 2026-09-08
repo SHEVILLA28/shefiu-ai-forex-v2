@@ -3,8 +3,6 @@ import time
 import threading
 from datetime import datetime, timezone
 
-from market_session import is_forex_market_open, market_status_message
-
 import requests
 import pandas as pd
 
@@ -23,50 +21,44 @@ MIN_CANDLES = 100
 
 
 # =========================================================
-# REQUEST PROTECTION
+# TWELVE DATA REQUEST PROTECTION + CACHE
 # =========================================================
 
 API_REQUEST_LOCK = threading.Lock()
 
-LAST_API_REQUEST_TIME = 0
+LAST_API_REQUEST_TIME = 0.0
 
-MIN_REQUEST_INTERVAL = 10
+# Keep requests deliberately slow enough for an automatic multi-pair scan.
+MIN_REQUEST_INTERVAL = float(
+    os.getenv("TWELVE_DATA_MIN_REQUEST_INTERVAL", "20")
+)
 
+# Cache successful responses so the same candles are not requested again
+# unnecessarily during a scan or by another bot action.
+DATA_CACHE = {}
 
-# =========================================================
-# RATE LIMIT RETRY SETTINGS
-# =========================================================
-
-MAX_RATE_LIMIT_RETRIES = 2
-
-RATE_LIMIT_WAIT_TIME = 60
-
-
-# =========================================================
-# TIMEFRAME SETTINGS
-# =========================================================
-
-# Directly supported intervals from Twelve Data
-DIRECT_TIMEFRAME_MAP = {
-    "1M": "1min",
-    "5M": "5min",
-    "15M": "15min",
-    "30M": "30min",
-    "1H": "1h",
+CACHE_TTL_SECONDS = {
+    "1min": 50,
+    "2min": 110,
+    "3min": 170,
+    "5min": 300,
+    "15min": 720,
+    "30min": 1440,
+    "1h": 3000,
 }
 
-# Timeframes created from 1-minute candles
-RESAMPLED_TIMEFRAMES = {
-    "2M": "2min",
-    "3M": "3min",
-}
+# A 429 means the provider has already refused the account.  Do not keep
+# hammering the API pair-by-pair.  Pause all new Twelve Data requests first.
+RATE_LIMIT_BLOCK_UNTIL = 0.0
+RATE_LIMIT_BLOCK_SECONDS = int(
+    os.getenv("TWELVE_DATA_RATE_LIMIT_COOLDOWN", "300")
+)
 
 
-# =========================================================
-# HIGHER TIMEFRAME SETTINGS
-# =========================================================
-
-HIGHER_TIMEFRAME = "15M"
+def is_rate_limit_error(message):
+    """Return True when a scan should stop instead of hammering Twelve Data."""
+    text = str(message or "").lower()
+    return "rate limit" in text or "cooldown" in text or "too many" in text
 
 
 # =========================================================
@@ -84,48 +76,93 @@ def format_symbol(pair):
 
 def is_market_open():
 
-    return is_forex_market_open()
+    now = datetime.now(timezone.utc)
+
+    weekday = now.weekday()
+
+    hour = now.hour
+
+
+    # Saturday
+    if weekday == 5:
+        return False
+
+
+    # Sunday before market opens
+    if weekday == 6 and hour < 22:
+        return False
+
+
+    # Friday after market closes
+    if weekday == 4 and hour >= 22:
+        return False
+
+
+    return True
 
 
 # =========================================================
-# WAIT FOR API RATE LIMIT
+# CACHE HELPERS
+# =========================================================
+
+def _cache_key(symbol, interval, outputsize):
+
+    return (symbol, interval, int(outputsize))
+
+
+def _cache_ttl(interval):
+
+    return CACHE_TTL_SECONDS.get(interval, 60)
+
+
+def _get_cached_data(symbol, interval, outputsize):
+
+    key = _cache_key(symbol, interval, outputsize)
+    cached = DATA_CACHE.get(key)
+
+    if not cached:
+        return None
+
+    cached_time, cached_data = cached
+
+    age = time.monotonic() - cached_time
+
+    if age < _cache_ttl(interval):
+        print(
+            f"Using cached market data: {symbol} | {interval} "
+            f"({age:.0f}s old)"
+        )
+        return cached_data
+
+    DATA_CACHE.pop(key, None)
+    return None
+
+
+# =========================================================
+# WAIT FOR API SPACING
 # =========================================================
 
 def wait_for_rate_limit():
 
     global LAST_API_REQUEST_TIME
 
+    current_time = time.monotonic()
 
-    with API_REQUEST_LOCK:
+    if LAST_API_REQUEST_TIME > 0:
 
-        current_time = time.time()
+        elapsed = current_time - LAST_API_REQUEST_TIME
+        remaining = MIN_REQUEST_INTERVAL - elapsed
 
+        if remaining > 0:
 
-        if LAST_API_REQUEST_TIME > 0:
-
-            elapsed = (
-                current_time
-                - LAST_API_REQUEST_TIME
+            print(
+                f"Rate limit protection: waiting "
+                f"{remaining:.1f} seconds..."
             )
 
+            time.sleep(remaining)
 
-            remaining = (
-                MIN_REQUEST_INTERVAL
-                - elapsed
-            )
-
-
-            if remaining > 0:
-
-                print(
-                    f"Rate limit protection: "
-                    f"waiting {remaining:.1f} seconds..."
-                )
-
-                time.sleep(remaining)
-
-
-        LAST_API_REQUEST_TIME = time.time()
+    LAST_API_REQUEST_TIME = time.monotonic()
 
 
 # =========================================================
@@ -137,6 +174,8 @@ def request_twelve_data(
     interval,
     outputsize=150
 ):
+
+    global RATE_LIMIT_BLOCK_UNTIL
 
     if not API_KEY:
 
@@ -152,6 +191,32 @@ def request_twelve_data(
 
     symbol = format_symbol(pair)
 
+    cached_data = _get_cached_data(
+        symbol,
+        interval,
+        outputsize
+    )
+
+    if cached_data is not None:
+        return cached_data, None
+
+
+    # If Twelve Data has already returned 429, stop every following pair
+    # from immediately making another request.
+    remaining_block = RATE_LIMIT_BLOCK_UNTIL - time.monotonic()
+
+    if remaining_block > 0:
+
+        error_message = (
+            "Twelve Data rate limit cooldown is active. "
+            f"Waiting about {int(remaining_block)} seconds before "
+            "requesting market data again."
+        )
+
+        print(error_message)
+
+        return None, error_message
+
 
     params = {
         "symbol": symbol,
@@ -162,14 +227,38 @@ def request_twelve_data(
     }
 
 
-    for attempt in range(
-        MAX_RATE_LIMIT_RETRIES + 1
-    ):
+    with API_REQUEST_LOCK:
+
+        # Another scanner action may have filled the cache while this call
+        # was waiting for the lock.
+        cached_data = _get_cached_data(
+            symbol,
+            interval,
+            outputsize
+        )
+
+        if cached_data is not None:
+            return cached_data, None
+
+
+        remaining_block = RATE_LIMIT_BLOCK_UNTIL - time.monotonic()
+
+        if remaining_block > 0:
+
+            error_message = (
+                "Twelve Data rate limit cooldown is active. "
+                f"Waiting about {int(remaining_block)} seconds before "
+                "requesting market data again."
+            )
+
+            print(error_message)
+
+            return None, error_message
+
 
         try:
 
             wait_for_rate_limit()
-
 
             print(
                 f"Requesting market data: "
@@ -191,95 +280,80 @@ def request_twelve_data(
 
 
             try:
-
                 data = response.json()
-
-
             except Exception:
-
                 return None, (
-                    "Twelve Data returned "
-                    "an invalid response."
+                    "Twelve Data returned an invalid response."
                 )
 
 
         except requests.RequestException as e:
 
-            error_message = (
-                f"Market request error: {e}"
-            )
-
+            error_message = f"Market request error: {e}"
             print(error_message)
-
             return None, error_message
 
 
         except Exception as e:
 
-            error_message = (
-                f"Unexpected market error: {e}"
-            )
-
+            error_message = f"Unexpected market error: {e}"
             print(error_message)
-
             return None, error_message
 
 
-        # Rate limit
+        # Rate limit: pause the whole provider, not just the current pair.
         if response.status_code == 429:
+
+            RATE_LIMIT_BLOCK_UNTIL = (
+                time.monotonic() + RATE_LIMIT_BLOCK_SECONDS
+            )
 
             error_message = (
                 data.get("message")
                 or "Twelve Data rate limit reached."
             )
 
-
+            print("TWELVE DATA RATE LIMIT REACHED")
             print(
-                "TWELVE DATA RATE LIMIT REACHED"
+                f"Pausing all Twelve Data requests for "
+                f"{RATE_LIMIT_BLOCK_SECONDS} seconds."
             )
-
-
-            if attempt < MAX_RATE_LIMIT_RETRIES:
-
-                print(
-                    f"Waiting {RATE_LIMIT_WAIT_TIME} "
-                    f"seconds before retry..."
-                )
-
-                time.sleep(
-                    RATE_LIMIT_WAIT_TIME
-                )
-
-                continue
-
 
             return None, error_message
 
 
-        # API error
-        if data.get("status") == "error":
+        if response.status_code >= 400:
+
+            error_message = (
+                data.get("message")
+                or f"Twelve Data HTTP error {response.status_code}."
+            )
+
+            print("Twelve Data error:", data)
+
+            return None, str(error_message)
+
+
+        if isinstance(data, dict) and data.get("status") == "error":
 
             error_message = (
                 data.get("message")
                 or "Twelve Data did not return data."
             )
 
-
-            print(
-                "Twelve Data error:",
-                data
-            )
-
+            print("Twelve Data error:", data)
 
             return None, str(error_message)
 
 
+        DATA_CACHE[
+            _cache_key(symbol, interval, outputsize)
+        ] = (
+            time.monotonic(),
+            data
+        )
+
         return data, None
-
-
-    return None, (
-        "Unable to retrieve market data."
-    )
 
 
 # =========================================================
@@ -521,11 +595,15 @@ def get_market_data(pair, timeframe):
         )
 
 
+        # Request enough 5-minute history to derive the 15-minute
+        # confirmation locally, avoiding a second API call per pair.
+        outputsize = 300 if timeframe == "5M" else 150
+
         data, error_message = (
             request_twelve_data(
                 pair,
                 interval,
-                150
+                outputsize
             )
         )
 
@@ -811,7 +889,40 @@ def get_trend_from_df(df):
 # GET HIGHER TIMEFRAME TREND
 # =========================================================
 
-def get_higher_timeframe_trend(pair):
+def get_higher_timeframe_trend(pair, source_df=None, source_timeframe=None):
+
+    # For the normal 5M scanner, build the 15M confirmation from the same
+    # 5-minute candles. This removes one Twelve Data request for every pair.
+    if (
+        source_df is not None
+        and source_timeframe == "5M"
+        and len(source_df) >= 150
+    ):
+        try:
+            data = source_df.copy().set_index("datetime")
+            higher_df = (
+                data.resample("15min")
+                .agg({
+                    "open": "first",
+                    "high": "max",
+                    "low": "min",
+                    "close": "last"
+                })
+                .dropna()
+                .reset_index()
+            )
+
+            if len(higher_df) >= 50:
+                trend = get_trend_from_df(higher_df)
+                print(
+                    f"Higher timeframe trend for {pair}: {trend} "
+                    "(derived from cached 5M candles)"
+                )
+                return trend
+
+        except Exception as e:
+            print(f"Higher timeframe resample error: {e}")
+
 
     df, error_message = get_market_data(
         pair,
@@ -1173,7 +1284,9 @@ def get_signal(
 
             timeframe,
 
-            market_status_message()
+            "Forex market is currently closed. "
+            "Automatic trading is paused until "
+            "the market reopens."
 
         )
 
@@ -1471,7 +1584,11 @@ def get_signal(
     # =====================================================
 
     higher_trend = (
-        get_higher_timeframe_trend(pair)
+        get_higher_timeframe_trend(
+            pair,
+            source_df=df,
+            source_timeframe=timeframe
+        )
     )
 
 

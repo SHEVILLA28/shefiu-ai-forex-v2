@@ -1,9 +1,21 @@
-# shefiu-ai-forex-v2
+# SHEFIU AI FOREX V2 - FIXED
 
-## Market session control update
+## Start command
+`python main.py`
 
-The bot now uses one central Forex session controller based on the New York
-5:00 PM weekly session boundary. This handles daylight-saving changes without
-hard-coding a UTC hour. When AUTO is enabled, the scanner pauses while the
-weekly market is closed and checks again automatically every minute. It resumes
-after the session opens without requiring a manual Render restart.
+## Required Render environment variables
+- `BOT_TOKEN`
+- `CHAT_ID`
+- `TWELVE_DATA_API_KEY`
+- `METAAPI_TOKEN`
+- `METAAPI_ACCOUNT_ID`
+
+Optional controls are in `.env.example`.
+
+## Important
+- The bot pauses Twelve Data requests after a provider rate-limit response instead of continuing to hammer the API.
+- The scanner derives the 15-minute confirmation from 5-minute candles when possible, reducing API calls.
+- Automatic trading has maximum-open-trades, same-symbol, cooldown, and SL/TP direction checks.
+- Test the corrected deployment on a demo account before enabling real-money trading.
+
+This software can generate or execute trades but cannot guarantee profitable results.

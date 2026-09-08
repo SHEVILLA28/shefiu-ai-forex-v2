@@ -14,8 +14,7 @@ from telegram_bot import (
     run_telegram_bot
 )
 
-from signals import get_signal
-from market_session import is_forex_market_open
+from signals import get_signal, is_rate_limit_error
 
 from bot_control import get_auto_settings
 
@@ -165,35 +164,35 @@ def send_telegram_message(message):
 # DEFAULT SETTINGS
 # =========================================================
 
-TIMEFRAME = "5M"
+TIMEFRAME = os.getenv("DEFAULT_TIMEFRAME", "5M").upper()
 
 
 # =========================================================
 # SCAN SETTINGS
 # =========================================================
 
-SCAN_INTERVAL = 300
+SCAN_INTERVAL = max(60, int(os.getenv("SCAN_INTERVAL_SECONDS", "300")))
 
 
 # =========================================================
 # TRADE SETTINGS
 # =========================================================
 
-TRADE_VOLUME = 0.02
+TRADE_VOLUME = float(os.getenv("TRADE_VOLUME", "0.02"))
 
 
 # =========================================================
 # MAXIMUM OPEN TRADES PROTECTION
 # =========================================================
 
-MAX_OPEN_TRADES = 2
+MAX_OPEN_TRADES = max(1, int(os.getenv("MAX_OPEN_TRADES", "2")))
 
 
 # =========================================================
 # TRADE COOLDOWN PROTECTION
 # =========================================================
 
-TRADE_COOLDOWN = 1800
+TRADE_COOLDOWN = max(0, int(os.getenv("TRADE_COOLDOWN_SECONDS", "1800")))
 
 
 # =========================================================
@@ -211,12 +210,9 @@ LAST_TRADE_TIME = {}
 
 def convert_to_mt5_symbol(pair):
 
-    symbol = pair.replace(
-        "/",
-        ""
-    )
-
-    return symbol + "m"
+    symbol = str(pair).upper().replace("/", "").replace(" ", "")
+    suffix = os.getenv("MT5_SYMBOL_SUFFIX", "m")
+    return symbol + suffix
 
 
 # =========================================================
@@ -474,15 +470,20 @@ def execute_trade(result, pair):
             f"for {pair}: {e}"
         )
 
+        return (False, "INVALID_SL_TP")
 
-        return (
+    try:
+        entry = float(result.get("entry"))
+    except Exception:
+        return (False, "INVALID_ENTRY")
 
-            False,
+    if signal == "BUY" and not (stop_loss < entry < take_profit):
+        print(f"Invalid BUY levels for {pair}: SL={stop_loss}, entry={entry}, TP={take_profit}")
+        return (False, "INVALID_SL_TP_DIRECTION")
 
-            "INVALID_SL_TP"
-
-        )
-
+    if signal == "SELL" and not (take_profit < entry < stop_loss):
+        print(f"Invalid SELL levels for {pair}: SL={stop_loss}, entry={entry}, TP={take_profit}")
+        return (False, "INVALID_SL_TP_DIRECTION")
 
     # =============================================
     # CONVERT SYMBOL
@@ -717,27 +718,6 @@ def run_automatic_scanner():
 
 
             # =============================================
-            # FOREX MARKET SESSION
-            # Keep AUTO enabled, but pause scanning and new
-            # trade execution while the weekly market is closed.
-            # The loop checks again automatically, so Sunday
-            # reopening needs no Render restart or manual action.
-            # =============================================
-
-            if not is_forex_market_open():
-
-                print(
-                    "🔴 Forex market is closed. "
-                    "Automatic scanner is paused and will "
-                    "resume automatically when the market opens."
-                )
-
-                time.sleep(60)
-
-                continue
-
-
-            # =============================================
             # NO PAIRS SELECTED
             # =============================================
 
@@ -858,6 +838,10 @@ def run_automatic_scanner():
                         auto_timeframe
                     )
 
+                    provider_reason = result.get("reason", "")
+                    if is_rate_limit_error(provider_reason):
+                        print("🛑 Twelve Data is rate-limited. Stopping this scan cycle to avoid more failed requests.")
+                        break
 
                     signal = result.get(
                         "signal",

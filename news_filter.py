@@ -1,4 +1,6 @@
 import requests
+import time
+import threading
 from datetime import datetime, timedelta, timezone
 
 
@@ -7,6 +9,12 @@ from datetime import datetime, timedelta, timezone
 # =========================================================
 
 NEWS_URL = "https://xoomar.com/api/markets/calendar"
+
+# Fetch the calendar once and reuse it briefly for all pairs in the same scan.
+NEWS_CACHE_LOCK = threading.Lock()
+NEWS_CACHE_TIME = 0.0
+NEWS_CACHE_DATA = None
+NEWS_CACHE_SECONDS = 60
 
 
 # =========================================================
@@ -32,70 +40,72 @@ def get_pair_currencies(pair):
 
 def get_economic_news():
 
-    try:
+    global NEWS_CACHE_TIME, NEWS_CACHE_DATA
 
-        print("Checking economic news...")
+    now_monotonic = time.monotonic()
 
-        response = requests.get(
-            NEWS_URL,
-            timeout=15
-        )
+    with NEWS_CACHE_LOCK:
 
-        response.raise_for_status()
+        if (
+            NEWS_CACHE_DATA is not None
+            and now_monotonic - NEWS_CACHE_TIME < NEWS_CACHE_SECONDS
+        ):
+            print("Using cached economic news.")
+            return NEWS_CACHE_DATA
 
-        response_data = response.json()
+        try:
 
+            print("Checking economic news...")
 
-        # =============================================
-        # API RETURNS DATA INSIDE "data"
-        # =============================================
-
-        if isinstance(response_data, dict):
-
-            news_data = response_data.get(
-                "data",
-                []
+            response = requests.get(
+                NEWS_URL,
+                timeout=15
             )
 
-            if isinstance(news_data, list):
+            response.raise_for_status()
+
+            response_data = response.json()
+
+            if isinstance(response_data, dict):
+
+                news_data = response_data.get("data", [])
+
+                if isinstance(news_data, list):
+
+                    print(
+                        f"Economic news events received: "
+                        f"{len(news_data)}"
+                    )
+
+                    NEWS_CACHE_DATA = news_data
+                    NEWS_CACHE_TIME = time.monotonic()
+                    return news_data
+
+            if isinstance(response_data, list):
 
                 print(
                     f"Economic news events received: "
-                    f"{len(news_data)}"
+                    f"{len(response_data)}"
                 )
 
-                return news_data
-
-
-        # =============================================
-        # API RETURNS LIST DIRECTLY
-        # =============================================
-
-        if isinstance(response_data, list):
+                NEWS_CACHE_DATA = response_data
+                NEWS_CACHE_TIME = time.monotonic()
+                return response_data
 
             print(
-                f"Economic news events received: "
-                f"{len(response_data)}"
+                "Economic news API returned an "
+                "unexpected format."
             )
 
-            return response_data
+            return []
 
+        except Exception as e:
 
-        print(
-            "Economic news API returned an "
-            "unexpected format."
-        )
+            print(
+                f"News filter error: {e}"
+            )
 
-        return []
-
-
-    except Exception as e:
-
-        print(
-            f"News filter error: {e}"
-        )
-
-        return []
+            return []
 
 
 # =========================================================
