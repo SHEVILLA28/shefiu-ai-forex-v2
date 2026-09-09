@@ -14,9 +14,11 @@ from telegram_bot import (
     run_telegram_bot
 )
 
-from signals import get_signal, is_rate_limit_error
+from signals import get_signal
 
 from bot_control import get_auto_settings
+
+from market_data import resolve_mt5_symbol
 
 from metaapi_trader import (
     place_buy_order,
@@ -173,11 +175,6 @@ TIMEFRAME = os.getenv("DEFAULT_TIMEFRAME", "5M").upper()
 
 SCAN_INTERVAL = max(60, int(os.getenv("SCAN_INTERVAL_SECONDS", "300")))
 
-# Limit how many pairs are requested in one scan cycle. This prevents a long
-# selected-pair list from exhausting the market-data provider quota at once.
-MAX_PAIRS_PER_SCAN = max(1, int(os.getenv("MAX_PAIRS_PER_SCAN", "2")))
-PAIR_SCAN_CURSOR = 0
-
 
 # =========================================================
 # TRADE SETTINGS
@@ -215,9 +212,15 @@ LAST_TRADE_TIME = {}
 
 def convert_to_mt5_symbol(pair):
 
-    symbol = str(pair).upper().replace("/", "").replace(" ", "")
-    suffix = os.getenv("MT5_SYMBOL_SUFFIX", "m")
-    return symbol + suffix
+    # Resolve the exact symbol exposed by the connected Exness MT5 account.
+    # Do not guess a broker suffix such as "m".
+    try:
+        symbol = resolve_mt5_symbol(pair)
+        print(f"MT5 symbol resolved: {pair} -> {symbol}")
+        return symbol
+    except Exception as e:
+        print(f"MT5 symbol resolution failed for {pair}: {e}")
+        return str(pair).upper().replace("/", "").replace(" ", "")
 
 
 # =========================================================
@@ -411,6 +414,31 @@ def check_trade_permission(symbol):
 
 
 # =========================================================
+# METAAPI TRADE RESULT VALIDATION
+# =========================================================
+
+def _trade_result_success(result):
+    if not isinstance(result, dict):
+        return False
+
+    code = str(result.get("stringCode", "")).upper()
+
+    if not code:
+        return False
+
+    success_codes = {
+        "TRADE_RETCODE_DONE",
+        "TRADE_RETCODE_DONE_PARTIAL",
+        "DONE",
+        "FILLED",
+        "PLACED",
+        "OK",
+    }
+
+    return code in success_codes
+
+
+# =========================================================
 # AUTOMATIC TRADE EXECUTION
 # =========================================================
 
@@ -571,6 +599,9 @@ def execute_trade(result, pair):
                 f"{result_order}"
             )
 
+            if not _trade_result_success(result_order):
+                return (False, "TRADE_REJECTED")
+
 
         # =========================================
         # SELL ORDER
@@ -605,6 +636,9 @@ def execute_trade(result, pair):
                 f"SELL order result: "
                 f"{result_order}"
             )
+
+            if not _trade_result_success(result_order):
+                return (False, "TRADE_REJECTED")
 
 
         # =============================================
@@ -770,27 +804,10 @@ def run_automatic_scanner():
 
 
             # =============================================
-            # SCAN A SMALL ROTATING BATCH OF SELECTED PAIRS
+            # SCAN ONLY SELECTED FOREX PAIRS
             # =============================================
-            # Twelve Data can rate-limit a free/limited API key. Instead of
-            # requesting every selected pair in one burst, scan a rotating
-            # batch and continue with the next batch on the next cycle.
-            global PAIR_SCAN_CURSOR
 
-            batch_size = min(MAX_PAIRS_PER_SCAN, len(selected_pairs))
-            start = PAIR_SCAN_CURSOR % len(selected_pairs)
-            scan_pairs = [
-                selected_pairs[(start + offset) % len(selected_pairs)]
-                for offset in range(batch_size)
-            ]
-            PAIR_SCAN_CURSOR = (start + batch_size) % len(selected_pairs)
-
-            print(
-                f"Scanning {len(scan_pairs)}/{len(selected_pairs)} selected pairs this cycle: "
-                f"{scan_pairs}"
-            )
-
-            for pair in scan_pairs:
+            for pair in selected_pairs:
 
                 try:
 
@@ -859,11 +876,6 @@ def run_automatic_scanner():
                         pair,
                         auto_timeframe
                     )
-
-                    provider_reason = result.get("reason", "")
-                    if is_rate_limit_error(provider_reason):
-                        print("🛑 Twelve Data is rate-limited. Stopping this scan cycle to avoid more failed requests.")
-                        break
 
                     signal = result.get(
                         "signal",
@@ -1139,11 +1151,6 @@ if __name__ == "__main__":
     print(
         f"Scan Interval: "
         f"{SCAN_INTERVAL} seconds"
-    )
-
-    print(
-        f"Maximum Pairs Per Scan: "
-        f"{MAX_PAIRS_PER_SCAN}"
     )
 
     print(
