@@ -20,6 +20,39 @@ MAX_DATA_AGE_MINUTES = 15
 
 
 # =========================================================
+# RATE LIMIT ERROR CHECK
+# =========================================================
+
+def is_rate_limit_error(message):
+
+    if not message:
+        return False
+
+    message = str(message).lower()
+
+    rate_limit_words = [
+
+        "rate limit",
+
+        "too many requests",
+
+        "quota",
+
+        "api credits",
+
+        "429",
+
+        "limit reached",
+
+    ]
+
+    return any(
+        word in message
+        for word in rate_limit_words
+    )
+
+
+# =========================================================
 # TWELVE DATA RATE LIMIT + CACHE PROTECTION
 # =========================================================
 
@@ -54,7 +87,10 @@ def market_data_request(url, params):
 
         if now - cached_time < CACHE_SECONDS:
 
-            print(f"Using cached data for {params.get('symbol')}")
+            print(
+                f"Using cached data for "
+                f"{params.get('symbol')}"
+            )
 
             return cached_data
 
@@ -70,7 +106,10 @@ def market_data_request(url, params):
 
             if now - cached_time < CACHE_SECONDS:
 
-                print(f"Using cached data for {params.get('symbol')}")
+                print(
+                    f"Using cached data for "
+                    f"{params.get('symbol')}"
+                )
 
                 return cached_data
 
@@ -78,7 +117,9 @@ def market_data_request(url, params):
 
         if elapsed < MIN_REQUEST_INTERVAL_SECONDS:
 
-            wait_time = MIN_REQUEST_INTERVAL_SECONDS - elapsed
+            wait_time = (
+                MIN_REQUEST_INTERVAL_SECONDS - elapsed
+            )
 
             print(
                 f"Waiting {wait_time:.0f} seconds "
@@ -91,7 +132,9 @@ def market_data_request(url, params):
 
             try:
 
-                LAST_DATA_REQUEST_TIME = time.monotonic()
+                LAST_DATA_REQUEST_TIME = (
+                    time.monotonic()
+                )
 
                 response = requests.get(
                     url,
@@ -114,7 +157,10 @@ def market_data_request(url, params):
 
                     return {
                         "status": "error",
-                        "message": "Rate limit reached. Please wait and try again."
+                        "message": (
+                            "Rate limit reached. "
+                            "Please wait and try again."
+                        )
                     }
 
                 response.raise_for_status()
@@ -148,12 +194,16 @@ def market_data_request(url, params):
 
                 return {
                     "status": "error",
-                    "message": "Market data request failed."
+                    "message": (
+                        "Market data request failed."
+                    )
                 }
 
         return {
             "status": "error",
-            "message": "Market data temporarily unavailable"
+            "message": (
+                "Market data temporarily unavailable"
+            )
         }
 
 
@@ -281,7 +331,9 @@ def rsi(series, period=14):
 
     rs = avg_gain / avg_loss
 
-    result = 100 - (100 / (1 + rs))
+    result = 100 - (
+        100 / (1 + rs)
+    )
 
     return result.fillna(100)
 
@@ -302,7 +354,11 @@ def macd(series):
 
     histogram = macd_line - signal_line
 
-    return macd_line, signal_line, histogram
+    return (
+        macd_line,
+        signal_line,
+        histogram
+    )
 
 
 # =========================================================
@@ -334,7 +390,9 @@ def normalize_timeframe(timeframe):
     if timeframe is None:
         return "5M"
 
-    value = str(timeframe).strip().upper()
+    value = str(
+        timeframe
+    ).strip().upper()
 
     aliases = {
 
@@ -359,7 +417,10 @@ def normalize_timeframe(timeframe):
         "5MIN": "5M",
     }
 
-    return aliases.get(value, "5M")
+    return aliases.get(
+        value,
+        "5M"
+    )
 
 
 # =========================================================
@@ -408,7 +469,8 @@ def get_signal(pair, timeframe="5M"):
     if not API_KEY:
 
         raise RuntimeError(
-            "TWELVE_DATA_API_KEY is missing in Render Environment"
+            "TWELVE_DATA_API_KEY is missing "
+            "in Render Environment"
         )
 
     pair = pair.strip().upper()
@@ -429,6 +491,7 @@ def get_signal(pair, timeframe="5M"):
 
     minutes = settings["minutes"]
 
+
     # =====================================================
     # MARKET CLOSED CHECK
     # =====================================================
@@ -443,11 +506,14 @@ def get_signal(pair, timeframe="5M"):
             timeframe
         )
 
+
     # =====================================================
     # TWELVE DATA REQUEST
     # =====================================================
 
-    url = "https://api.twelvedata.com/time_series"
+    url = (
+        "https://api.twelvedata.com/time_series"
+    )
 
     params = {
 
@@ -460,7 +526,11 @@ def get_signal(pair, timeframe="5M"):
         "apikey": API_KEY,
     }
 
-    data = market_data_request(url, params)
+    data = market_data_request(
+        url,
+        params
+    )
+
 
     # =====================================================
     # API ERROR
@@ -497,6 +567,7 @@ def get_signal(pair, timeframe="5M"):
             timeframe
         )
 
+
     # =====================================================
     # DATAFRAME
     # =====================================================
@@ -526,10 +597,15 @@ def get_signal(pair, timeframe="5M"):
     )
 
     for column in [
+
         "open",
+
         "high",
+
         "low",
+
         "close",
+
     ]:
 
         df[column] = pd.to_numeric(
@@ -552,13 +628,17 @@ def get_signal(pair, timeframe="5M"):
         .reset_index(drop=True)
     )
 
+
     # =====================================================
     # BUILD 2M / 3M CANDLES
     # =====================================================
 
     if minutes in {2, 3}:
 
-        df = resample_minutes(df, minutes)
+        df = resample_minutes(
+            df,
+            minutes
+        )
 
     if len(df) < MIN_CANDLES:
 
@@ -567,6 +647,7 @@ def get_signal(pair, timeframe="5M"):
             "Not enough valid timeframe candles",
             timeframe
         )
+
 
     # =====================================================
     # DATA FRESHNESS
@@ -590,6 +671,7 @@ def get_signal(pair, timeframe="5M"):
             timeframe
         )
 
+
     # =====================================================
     # PRICE DATA
     # =====================================================
@@ -600,15 +682,25 @@ def get_signal(pair, timeframe="5M"):
 
     low = df["low"]
 
+
     # =====================================================
     # INDICATORS
     # =====================================================
 
-    df["ema20"] = ema(close, 20)
+    df["ema20"] = ema(
+        close,
+        20
+    )
 
-    df["ema50"] = ema(close, 50)
+    df["ema50"] = ema(
+        close,
+        50
+    )
 
-    df["rsi"] = rsi(close, 14)
+    df["rsi"] = rsi(
+        close,
+        14
+    )
 
     (
         df["macd"],
@@ -616,31 +708,49 @@ def get_signal(pair, timeframe="5M"):
         df["macd_hist"]
     ) = macd(close)
 
+
     latest = df.iloc[-1]
 
     previous = df.iloc[-2]
 
-    price = float(latest["close"])
 
-    ema20 = float(latest["ema20"])
+    price = float(
+        latest["close"]
+    )
 
-    ema50 = float(latest["ema50"])
+    ema20 = float(
+        latest["ema20"]
+    )
 
-    rsi_value = float(latest["rsi"])
+    ema50 = float(
+        latest["ema50"]
+    )
 
-    macd_value = float(latest["macd"])
+    rsi_value = float(
+        latest["rsi"]
+    )
+
+    macd_value = float(
+        latest["macd"]
+    )
 
     macd_signal_value = float(
         latest["macd_signal"]
     )
 
+
     # =====================================================
     # SUPPORT / RESISTANCE
     # =====================================================
 
-    support = float(low.tail(20).min())
+    support = float(
+        low.tail(20).min()
+    )
 
-    resistance = float(high.tail(20).max())
+    resistance = float(
+        high.tail(20).max()
+    )
+
 
     # =====================================================
     # SCORES
@@ -649,6 +759,7 @@ def get_signal(pair, timeframe="5M"):
     buy_score = 0
 
     sell_score = 0
+
 
     # =====================================================
     # TREND
@@ -676,13 +787,18 @@ def get_signal(pair, timeframe="5M"):
 
         trend = "SIDEWAYS"
 
+
     # =====================================================
     # EMA MOMENTUM
     # =====================================================
 
-    previous_ema20 = float(previous["ema20"])
+    previous_ema20 = float(
+        previous["ema20"]
+    )
 
-    previous_ema50 = float(previous["ema50"])
+    previous_ema50 = float(
+        previous["ema50"]
+    )
 
     if (
         ema20 > previous_ema20
@@ -698,6 +814,7 @@ def get_signal(pair, timeframe="5M"):
 
         sell_score += 1
 
+
     # =====================================================
     # RSI
     # =====================================================
@@ -710,11 +827,14 @@ def get_signal(pair, timeframe="5M"):
 
         sell_score += 1
 
+
     # =====================================================
     # MACD
     # =====================================================
 
-    previous_macd = float(previous["macd"])
+    previous_macd = float(
+        previous["macd"]
+    )
 
     previous_signal = float(
         previous["macd_signal"]
@@ -742,6 +862,7 @@ def get_signal(pair, timeframe="5M"):
 
         sell_score += 1
 
+
     # =====================================================
     # SUPPORT / RESISTANCE CONFIRMATION
     # =====================================================
@@ -764,6 +885,7 @@ def get_signal(pair, timeframe="5M"):
 
         sell_score += 1
 
+
     # =====================================================
     # BUY SIGNAL
     # =====================================================
@@ -782,6 +904,7 @@ def get_signal(pair, timeframe="5M"):
         )
 
         trend = "BUY"
+
 
     # =====================================================
     # SELL SIGNAL
@@ -802,6 +925,7 @@ def get_signal(pair, timeframe="5M"):
 
         trend = "SELL"
 
+
     # =====================================================
     # NO TRADE
     # =====================================================
@@ -816,27 +940,46 @@ def get_signal(pair, timeframe="5M"):
                 timeframe
             ),
 
-            "entry": round(price, 5),
+            "entry": round(
+                price,
+                5
+            ),
 
             "trend": trend,
 
-            "rsi": round(rsi_value, 2),
+            "rsi": round(
+                rsi_value,
+                2
+            ),
 
-            "ema50": round(ema50, 5),
+            "ema50": round(
+                ema50,
+                5
+            ),
 
-            "macd": round(macd_value, 6),
+            "macd": round(
+                macd_value,
+                6
+            ),
 
             "macd_signal": round(
                 macd_signal_value,
                 6
             ),
 
-            "support": round(support, 5),
+            "support": round(
+                support,
+                5
+            ),
 
-            "resistance": round(resistance, 5),
+            "resistance": round(
+                resistance,
+                5
+            ),
 
             "confidence": 0,
         }
+
 
     # =====================================================
     # TAKE PROFIT / STOP LOSS
@@ -845,6 +988,7 @@ def get_signal(pair, timeframe="5M"):
     tp_distance = 50 * pip
 
     sl_distance = 25 * pip
+
 
     if signal == "BUY":
 
@@ -870,6 +1014,7 @@ def get_signal(pair, timeframe="5M"):
             5
         )
 
+
     # =====================================================
     # FINAL RESULT
     # =====================================================
@@ -880,7 +1025,10 @@ def get_signal(pair, timeframe="5M"):
 
         "signal": signal,
 
-        "entry": round(price, 5),
+        "entry": round(
+            price,
+            5
+        ),
 
         "take_profit": take_profit,
 
@@ -888,20 +1036,35 @@ def get_signal(pair, timeframe="5M"):
 
         "trend": trend,
 
-        "rsi": round(rsi_value, 2),
+        "rsi": round(
+            rsi_value,
+            2
+        ),
 
-        "ema50": round(ema50, 5),
+        "ema50": round(
+            ema50,
+            5
+        ),
 
-        "macd": round(macd_value, 6),
+        "macd": round(
+            macd_value,
+            6
+        ),
 
         "macd_signal": round(
             macd_signal_value,
             6
         ),
 
-        "support": round(support, 5),
+        "support": round(
+            support,
+            5
+        ),
 
-        "resistance": round(resistance, 5),
+        "resistance": round(
+            resistance,
+            5
+        ),
 
         "confidence": confidence,
 
