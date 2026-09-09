@@ -6,11 +6,17 @@ from config import BOT_TOKEN
 from signals import get_signal
 
 from bot_control import (
+
     set_auto_scan,
+
     get_auto_settings,
+
     add_auto_pair,
+
     remove_auto_pair,
+
     clear_auto_pairs
+
 )
 
 
@@ -96,17 +102,6 @@ LAST_MANUAL_REQUEST = {}
 SIGNAL_CACHE = {}
 
 CACHE_DURATION = 60
-
-
-# =========================================================
-# TELEGRAM DUPLICATE UPDATE PROTECTION
-# =========================================================
-
-PROCESSED_UPDATE_IDS = set()
-
-PROCESSED_UPDATE_ORDER = []
-
-MAX_PROCESSED_UPDATES = 1000
 
 
 # =========================================================
@@ -399,6 +394,7 @@ def get_selected_timeframe(chat_id):
 
 # =========================================================
 # SET TIMEFRAME
+# FIXED VERSION
 # =========================================================
 
 def set_selected_timeframe(
@@ -423,6 +419,13 @@ def set_selected_timeframe(
 
         return False
 
+
+    # =============================================
+    # SAVE USER TIMEFRAME ONLY
+    #
+    # This does NOT automatically change the
+    # running Automatic Scanner timeframe.
+    # =============================================
 
     USER_TIMEFRAMES[chat_id] = timeframe
 
@@ -1198,57 +1201,7 @@ def run_telegram_bot():
                 )
 
 
-                # =============================================
-                # DUPLICATE UPDATE PROTECTION
-                # =============================================
-
                 if update_id is not None:
-
-
-                    if update_id in PROCESSED_UPDATE_IDS:
-
-
-                        print(
-
-                            f"⚠️ Duplicate update ignored: "
-                            f"{update_id}"
-
-                        )
-
-
-                        offset = max(
-                            offset or 0,
-                            update_id + 1
-                        )
-
-
-                        continue
-
-
-                    # Mark as processed immediately
-                    PROCESSED_UPDATE_IDS.add(
-                        update_id
-                    )
-
-
-                    PROCESSED_UPDATE_ORDER.append(
-                        update_id
-                    )
-
-
-                    # Keep memory limited
-                    if len(PROCESSED_UPDATE_ORDER) > MAX_PROCESSED_UPDATES:
-
-
-                        old_update_id = (
-                            PROCESSED_UPDATE_ORDER.pop(0)
-                        )
-
-
-                        PROCESSED_UPDATE_IDS.discard(
-                            old_update_id
-                        )
-
 
                     offset = update_id + 1
 
@@ -1301,8 +1254,8 @@ def run_telegram_bot():
 
                 print(
 
-                    f"📩 Telegram update "
-                    f"{update_id}: {upper_text}"
+                    f"📩 Telegram: "
+                    f"{upper_text}"
 
                 )
 
