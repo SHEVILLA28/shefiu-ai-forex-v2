@@ -661,22 +661,18 @@ def execute_trade(result, pair):
 def wait_for_next_scan():
 
     elapsed = 0
-
+    blink = False
 
     while True:
 
         auto_settings = get_auto_settings()
 
-
         # Stop immediately if AUTO is OFF
-
         if not auto_settings.get(
             "enabled",
             False
         ):
-
             return
-
 
         # Re-read the selected timeframe on every check so a change
         # in Telegram takes effect during the waiting period.
@@ -690,8 +686,25 @@ def wait_for_next_scan():
         )
 
         if elapsed >= current_interval:
+            print("🚀 STARTING NEXT SCAN")
             return
 
+        remaining = max(
+            0,
+            int(current_interval - elapsed)
+        )
+
+        # Render logs are append-only, so the blinking effect is
+        # represented by alternating the waiting indicator.
+        icon = "⏳" if blink else "⌛"
+
+        print(
+            f"{icon} WAITING... "
+            f"{remaining}s "
+            f"({current_timeframe})"
+        )
+
+        blink = not blink
 
         sleep_seconds = min(
             5,
@@ -1107,13 +1120,6 @@ def run_automatic_scanner():
             current_interval = get_scan_interval(
                 current_timeframe
             )
-
-            print(
-                f"Waiting {current_interval} seconds "
-                f"before next scan "
-                f"({current_timeframe})..."
-            )
-
 
             wait_for_next_scan()
 
