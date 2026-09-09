@@ -34,18 +34,26 @@ FOREX_PAIRS = [
 
     "EUR/USD",
     "GBP/USD",
+
     "USD/JPY",
     "USD/CHF",
+
     "AUD/USD",
     "USD/CAD",
+
     "NZD/USD",
     "XAU/USD",
+
     "EUR/GBP",
     "CHF/JPY",
+
     "AUD/JPY",
     "EUR/JPY",
+
     "GBP/JPY",
     "USD/SGD",
+
+    # Additional liquid/common Forex crosses
     "EUR/AUD",
     "EUR/CAD",
     "EUR/CHF",
@@ -245,32 +253,20 @@ def get_main_menu():
 
 def get_pairs_keyboard():
 
+    rows = []
+
+    for i in range(0, len(FOREX_PAIRS), 2):
+        rows.append(FOREX_PAIRS[i:i + 2])
+
+    rows.extend([
+        ["📊 SELECT ALL PAIRS"],
+        ["🗑 CLEAR PAIRS", "🏠 MENU"]
+    ])
+
     return {
-
-        "keyboard": [
-
-            ["EUR/USD", "GBP/USD"],
-            ["USD/JPY", "USD/CHF"],
-            ["AUD/USD", "USD/CAD"],
-            ["NZD/USD", "XAU/USD"],
-            ["EUR/GBP", "CHF/JPY"],
-            ["AUD/JPY", "EUR/JPY"],
-            ["GBP/JPY", "USD/SGD"],
-            ["EUR/AUD", "EUR/CAD"],
-            ["EUR/CHF", "GBP/AUD"],
-            ["GBP/CAD", "GBP/CHF"],
-            ["AUD/NZD", "CAD/JPY"],
-            ["NZD/JPY", "AUD/CHF"],
-            ["CAD/CHF"],
-            ["📊 SELECT ALL PAIRS"],
-            ["🗑 CLEAR PAIRS", "🏠 MENU"]
-
-        ],
-
+        "keyboard": rows,
         "resize_keyboard": True
-
     }
-
 
 # =========================================================
 # TIMEFRAME KEYBOARD
@@ -279,37 +275,24 @@ def get_pairs_keyboard():
 def get_timeframe_keyboard():
 
     return {
-
         "keyboard": [
-
             [
-
                 "🕐 1M",
-
                 "🕐 2M"
-
             ],
-
             [
-
                 "🕐 3M",
-
                 "🕐 5M"
-
             ],
-
             [
-
+                "🕐 15M"
+            ],
+            [
                 "🏠 MENU"
-
             ]
-
         ],
-
         "resize_keyboard": True
-
     }
-
 
 # =========================================================
 # GET USER MODE
@@ -810,7 +793,7 @@ def send_help_message(chat_id):
         "🤖 AUTOMATIC MODE\n"
         "1️⃣ Press AUTOMATIC\n"
         "2️⃣ Choose PAIRS\n"
-        "3️⃣ Press 📊 SELECT ALL PAIRS or select individual pairs\n"
+        "3️⃣ Select Forex pairs\n"
         "4️⃣ Choose TIMEFRAME\n"
         "5️⃣ Press START AUTO\n\n"
 
@@ -1357,43 +1340,6 @@ def run_telegram_bot():
 
                     )
 
-
-                    continue
-
-
-                # =============================================
-                # SELECT ALL PAIRS
-                # =============================================
-
-                if "SELECT ALL PAIRS" in upper_text:
-
-                    clear_auto_pairs()
-
-                    for pair in FOREX_PAIRS:
-                        add_auto_pair(pair)
-
-                    selected_pairs = get_auto_settings().get(
-                        "pairs",
-                        []
-                    )
-
-                    pairs_text = (
-                        "\n".join(selected_pairs)
-                        if selected_pairs
-                        else "No pairs selected"
-                    )
-
-                    send_message(
-                        chat_id,
-
-                        "✅ ALL FOREX PAIRS SELECTED\n\n"
-                        f"📊 {len(selected_pairs)} pairs selected:\n\n"
-                        f"{pairs_text}\n\n"
-                        "🕐 Choose TIMEFRAME\n"
-                        "▶️ Press START AUTO",
-
-                        get_pairs_keyboard()
-                    )
 
                     continue
 
