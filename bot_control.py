@@ -64,7 +64,8 @@ VALID_TIMEFRAMES = [
     "1M",
     "2M",
     "3M",
-    "5M"
+    "5M",
+    "15M"
 
 ]
 
