@@ -212,15 +212,29 @@ LAST_TRADE_TIME = {}
 
 def convert_to_mt5_symbol(pair):
 
-    # Resolve the exact symbol exposed by the connected Exness MT5 account.
-    # Do not guess a broker suffix such as "m".
     try:
         symbol = resolve_mt5_symbol(pair)
-        print(f"MT5 symbol resolved: {pair} -> {symbol}")
+
+        if not symbol:
+            raise ValueError(
+                f"No MT5 symbol found for {pair}"
+            )
+
+        print(
+            f"MT5 symbol resolved: "
+            f"{pair} -> {symbol}"
+        )
+
         return symbol
+
     except Exception as e:
-        print(f"MT5 symbol resolution failed for {pair}: {e}")
-        return str(pair).upper().replace("/", "").replace(" ", "")
+
+        print(
+            f"MT5 symbol resolution failed "
+            f"for {pair}: {e}"
+        )
+
+        raise
 
 
 # =========================================================
