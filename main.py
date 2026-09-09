@@ -30,7 +30,36 @@ from metaapi_trader import (
 # =========================================================
 # SHEFIU AI FOREX V2
 # AUTOMATIC SIGNAL + TELEGRAM + METAAPI TRADING
+#
+# IMPORTANT:
+# TEST MODE IS ON BY DEFAULT.
+#
+# In TEST MODE:
+# - Forex scanning works
+# - Signals are generated
+# - Telegram notifications work
+# - NO MT5 order is placed
+#
+# Real trading must be deliberately enabled later.
 # =========================================================
+
+
+# =========================================================
+# SAFETY MODE
+# =========================================================
+
+TEST_ONLY = (
+    os.getenv(
+        "TEST_ONLY",
+        "true"
+    ).strip().lower()
+    in (
+        "true",
+        "1",
+        "yes",
+        "on"
+    )
+)
 
 
 # =========================================================
@@ -54,7 +83,6 @@ class HealthHandler(BaseHTTPRequestHandler):
             b"Forex AI Bot is running"
         )
 
-
     def do_HEAD(self):
 
         self.send_response(200)
@@ -65,7 +93,6 @@ class HealthHandler(BaseHTTPRequestHandler):
         )
 
         self.end_headers()
-
 
     def log_message(self, format, *args):
 
@@ -107,40 +134,28 @@ def send_telegram_message(message):
 
         return False
 
-
     url = (
         f"https://api.telegram.org/bot"
         f"{BOT_TOKEN}/sendMessage"
     )
 
-
     data = {
-
         "chat_id": CHAT_ID,
-
         "text": message
-
     }
-
 
     try:
 
         response = requests.post(
-
             url,
-
             data=data,
-
             timeout=30
-
         )
-
 
         print(
             f"Telegram status: "
             f"{response.status_code}"
         )
-
 
         if not response.ok:
 
@@ -149,9 +164,7 @@ def send_telegram_message(message):
                 response.text
             )
 
-
         return response.ok
-
 
     except Exception as e:
 
@@ -166,35 +179,69 @@ def send_telegram_message(message):
 # DEFAULT SETTINGS
 # =========================================================
 
-TIMEFRAME = os.getenv("DEFAULT_TIMEFRAME", "5M").upper()
+TIMEFRAME = (
+    os.getenv(
+        "DEFAULT_TIMEFRAME",
+        "5M"
+    ).upper()
+)
 
 
 # =========================================================
 # SCAN SETTINGS
 # =========================================================
 
-SCAN_INTERVAL = max(60, int(os.getenv("SCAN_INTERVAL_SECONDS", "300")))
+SCAN_INTERVAL = max(
+    60,
+    int(
+        os.getenv(
+            "SCAN_INTERVAL_SECONDS",
+            "300"
+        )
+    )
+)
 
 
 # =========================================================
 # TRADE SETTINGS
 # =========================================================
 
-TRADE_VOLUME = float(os.getenv("TRADE_VOLUME", "0.02"))
+TRADE_VOLUME = float(
+    os.getenv(
+        "TRADE_VOLUME",
+        "0.02"
+    )
+)
 
 
 # =========================================================
-# MAXIMUM OPEN TRADES PROTECTION
+# MAXIMUM OPEN TRADES
 # =========================================================
 
-MAX_OPEN_TRADES = max(1, int(os.getenv("MAX_OPEN_TRADES", "2")))
+MAX_OPEN_TRADES = max(
+    1,
+    int(
+        os.getenv(
+            "MAX_OPEN_TRADES",
+            "2"
+        )
+    )
+)
 
 
 # =========================================================
-# TRADE COOLDOWN PROTECTION
+# TRADE COOLDOWN
 # =========================================================
 
-TRADE_COOLDOWN = max(0, int(os.getenv("TRADE_COOLDOWN_SECONDS", "1800")))
+TRADE_COOLDOWN = max(
+    0,
+    int(
+        os.getenv(
+            "TRADE_COOLDOWN_SECONDS",
+            "1800"
+        )
+    )
+)
 
 
 # =========================================================
@@ -213,9 +260,13 @@ LAST_TRADE_TIME = {}
 def convert_to_mt5_symbol(pair):
 
     try:
-        symbol = resolve_mt5_symbol(pair)
+
+        symbol = resolve_mt5_symbol(
+            pair
+        )
 
         if not symbol:
+
             raise ValueError(
                 f"No MT5 symbol found for {pair}"
             )
@@ -238,7 +289,7 @@ def convert_to_mt5_symbol(pair):
 
 
 # =========================================================
-# CHECK IF A SYMBOL ALREADY HAS OPEN TRADE
+# CHECK OPEN POSITION FOR SYMBOL
 # =========================================================
 
 def symbol_has_open_position(
@@ -253,11 +304,12 @@ def symbol_has_open_position(
             ""
         )
 
-
-        if position_symbol.upper() == symbol.upper():
+        if (
+            position_symbol.upper()
+            == symbol.upper()
+        ):
 
             return True
-
 
     return False
 
@@ -273,30 +325,29 @@ def check_trade_cooldown(symbol):
         0
     )
 
-
     if last_trade == 0:
 
         return True, 0
 
-
-    elapsed = time.time() - last_trade
-
+    elapsed = (
+        time.time()
+        - last_trade
+    )
 
     if elapsed >= TRADE_COOLDOWN:
 
         return True, 0
 
-
     remaining = int(
-        TRADE_COOLDOWN - elapsed
+        TRADE_COOLDOWN
+        - elapsed
     )
-
 
     return False, remaining
 
 
 # =========================================================
-# CHECK IF A NEW TRADE CAN BE OPENED
+# CHECK TRADE PERMISSION
 # =========================================================
 
 def check_trade_permission(symbol):
@@ -307,39 +358,34 @@ def check_trade_permission(symbol):
             get_open_positions()
         )
 
-
         open_trade_count = len(
             positions
         )
 
-
         print(
             f"Currently open trades: "
-            f"{open_trade_count}/{MAX_OPEN_TRADES}"
+            f"{open_trade_count}/"
+            f"{MAX_OPEN_TRADES}"
         )
 
-
         # =============================================
-        # MAXIMUM OPEN TRADES PROTECTION
+        # MAXIMUM OPEN TRADES
         # =============================================
 
-        if open_trade_count >= MAX_OPEN_TRADES:
+        if (
+            open_trade_count
+            >= MAX_OPEN_TRADES
+        ):
 
             print(
                 "Maximum open trade limit reached."
             )
 
-
             return (
-
                 False,
-
                 "MAX_TRADES_REACHED",
-
                 open_trade_count
-
             )
-
 
         # =============================================
         # SAME SYMBOL PROTECTION
@@ -355,20 +401,14 @@ def check_trade_permission(symbol):
                 "already has an open position."
             )
 
-
             return (
-
                 False,
-
                 "SYMBOL_ALREADY_OPEN",
-
                 open_trade_count
-
             )
 
-
         # =============================================
-        # TRADE COOLDOWN PROTECTION
+        # COOLDOWN
         # =============================================
 
         cooldown_allowed, remaining = (
@@ -376,7 +416,6 @@ def check_trade_permission(symbol):
                 symbol
             )
         )
-
 
         if not cooldown_allowed:
 
@@ -386,28 +425,17 @@ def check_trade_permission(symbol):
                 f"{remaining} more seconds."
             )
 
-
             return (
-
                 False,
-
                 "TRADE_COOLDOWN",
-
                 open_trade_count
-
             )
 
-
         return (
-
             True,
-
             "TRADE_ALLOWED",
-
             open_trade_count
-
         )
-
 
     except Exception as e:
 
@@ -415,15 +443,10 @@ def check_trade_permission(symbol):
             f"Error checking open trades: {e}"
         )
 
-
         return (
-
             False,
-
             "POSITION_CHECK_FAILED",
-
             0
-
         )
 
 
@@ -432,21 +455,39 @@ def check_trade_permission(symbol):
 # =========================================================
 
 def _trade_result_success(result):
-    if not isinstance(result, dict):
+
+    if not isinstance(
+        result,
+        dict
+    ):
+
         return False
 
-    code = str(result.get("stringCode", "")).upper()
+    code = str(
+        result.get(
+            "stringCode",
+            ""
+        )
+    ).upper()
 
     if not code:
+
         return False
 
     success_codes = {
+
         "TRADE_RETCODE_DONE",
+
         "TRADE_RETCODE_DONE_PARTIAL",
+
         "DONE",
+
         "FILLED",
+
         "PLACED",
-        "OK",
+
+        "OK"
+
     }
 
     return code in success_codes
@@ -456,47 +497,74 @@ def _trade_result_success(result):
 # AUTOMATIC TRADE EXECUTION
 # =========================================================
 
-def execute_trade(result, pair):
+def execute_trade(
+    result,
+    pair
+):
 
     signal = result.get(
         "signal",
         "NO TRADE"
     )
 
-
     stop_loss = result.get(
         "stop_loss"
     )
-
 
     take_profit = result.get(
         "take_profit"
     )
 
-
     # =============================================
-    # VALID SIGNAL CHECK
+    # VALID SIGNAL
     # =============================================
 
     if signal not in [
-
         "BUY",
-
         "SELL"
-
     ]:
 
         return (
-
             False,
-
             "INVALID_SIGNAL"
-
         )
 
+    # =============================================
+    # TEST MODE SAFETY
+    #
+    # DO THIS BEFORE ANY MT5 ORDER
+    # =============================================
+
+    if TEST_ONLY:
+
+        print(
+            ""
+        )
+
+        print(
+            "===================================="
+        )
+
+        print(
+            f"🧪 TEST MODE: {signal} "
+            f"signal detected for {pair}"
+        )
+
+        print(
+            "🚫 MT5 REAL ORDER NOT PLACED"
+        )
+
+        print(
+            "===================================="
+        )
+
+        return (
+            False,
+            "SIGNAL_TEST_ONLY"
+        )
 
     # =============================================
-    # VALIDATE SL AND TP
+    # VALIDATE SL / TP
     # =============================================
 
     try:
@@ -509,7 +577,6 @@ def execute_trade(result, pair):
             take_profit
         )
 
-
     except Exception as e:
 
         print(
@@ -517,20 +584,77 @@ def execute_trade(result, pair):
             f"for {pair}: {e}"
         )
 
-        return (False, "INVALID_SL_TP")
+        return (
+            False,
+            "INVALID_SL_TP"
+        )
+
+    # =============================================
+    # VALIDATE ENTRY
+    # =============================================
 
     try:
-        entry = float(result.get("entry"))
+
+        entry = float(
+            result.get(
+                "entry"
+            )
+        )
+
     except Exception:
-        return (False, "INVALID_ENTRY")
 
-    if signal == "BUY" and not (stop_loss < entry < take_profit):
-        print(f"Invalid BUY levels for {pair}: SL={stop_loss}, entry={entry}, TP={take_profit}")
-        return (False, "INVALID_SL_TP_DIRECTION")
+        return (
+            False,
+            "INVALID_ENTRY"
+        )
 
-    if signal == "SELL" and not (take_profit < entry < stop_loss):
-        print(f"Invalid SELL levels for {pair}: SL={stop_loss}, entry={entry}, TP={take_profit}")
-        return (False, "INVALID_SL_TP_DIRECTION")
+    # =============================================
+    # BUY LEVEL VALIDATION
+    # =============================================
+
+    if signal == "BUY":
+
+        if not (
+            stop_loss
+            < entry
+            < take_profit
+        ):
+
+            print(
+                f"Invalid BUY levels for {pair}: "
+                f"SL={stop_loss}, "
+                f"entry={entry}, "
+                f"TP={take_profit}"
+            )
+
+            return (
+                False,
+                "INVALID_SL_TP_DIRECTION"
+            )
+
+    # =============================================
+    # SELL LEVEL VALIDATION
+    # =============================================
+
+    if signal == "SELL":
+
+        if not (
+            take_profit
+            < entry
+            < stop_loss
+        ):
+
+            print(
+                f"Invalid SELL levels for {pair}: "
+                f"SL={stop_loss}, "
+                f"entry={entry}, "
+                f"TP={take_profit}"
+            )
+
+            return (
+                False,
+                "INVALID_SL_TP_DIRECTION"
+            )
 
     # =============================================
     # CONVERT SYMBOL
@@ -540,7 +664,6 @@ def execute_trade(result, pair):
         pair
     )
 
-
     print(
         f"Trade setup for {symbol} | "
         f"Signal: {signal} | "
@@ -548,9 +671,8 @@ def execute_trade(result, pair):
         f"TP: {take_profit}"
     )
 
-
     # =============================================
-    # CHECK TRADE PROTECTION
+    # TRADE PROTECTION
     # =============================================
 
     allowed, status, open_trade_count = (
@@ -559,7 +681,6 @@ def execute_trade(result, pair):
         )
     )
 
-
     if not allowed:
 
         print(
@@ -567,20 +688,15 @@ def execute_trade(result, pair):
             f"{status}"
         )
 
-
         return (
-
             False,
-
             status
-
         )
-
 
     try:
 
         # =========================================
-        # BUY ORDER
+        # BUY
         # =========================================
 
         if signal == "BUY":
@@ -590,35 +706,31 @@ def execute_trade(result, pair):
                 f"for {symbol}"
             )
 
-
             result_order = asyncio.run(
-
                 place_buy_order(
-
                     symbol,
-
                     TRADE_VOLUME,
-
                     stop_loss,
-
                     take_profit
-
                 )
-
             )
-
 
             print(
                 f"BUY order result: "
                 f"{result_order}"
             )
 
-            if not _trade_result_success(result_order):
-                return (False, "TRADE_REJECTED")
+            if not _trade_result_success(
+                result_order
+            ):
 
+                return (
+                    False,
+                    "TRADE_REJECTED"
+                )
 
         # =========================================
-        # SELL ORDER
+        # SELL
         # =========================================
 
         elif signal == "SELL":
@@ -628,50 +740,41 @@ def execute_trade(result, pair):
                 f"for {symbol}"
             )
 
-
             result_order = asyncio.run(
-
                 place_sell_order(
-
                     symbol,
-
                     TRADE_VOLUME,
-
                     stop_loss,
-
                     take_profit
-
                 )
-
             )
-
 
             print(
                 f"SELL order result: "
                 f"{result_order}"
             )
 
-            if not _trade_result_success(result_order):
-                return (False, "TRADE_REJECTED")
+            if not _trade_result_success(
+                result_order
+            ):
 
+                return (
+                    False,
+                    "TRADE_REJECTED"
+                )
 
-        # =============================================
+        # =========================================
         # SAVE TRADE TIME
-        # =============================================
+        # =========================================
 
         LAST_TRADE_TIME[symbol] = (
             time.time()
         )
 
-
         return (
-
             True,
-
             "TRADE_PLACED"
-
         )
-
 
     except Exception as e:
 
@@ -680,31 +783,25 @@ def execute_trade(result, pair):
             f"for {symbol}: {e}"
         )
 
-
         return (
-
             False,
-
             "TRADE_FAILED"
-
         )
 
 
 # =========================================================
-# WAIT FOR NEXT AUTO SCAN
+# WAIT FOR NEXT SCAN
 # =========================================================
 
 def wait_for_next_scan():
 
     elapsed = 0
 
-
     while elapsed < SCAN_INTERVAL:
 
-        auto_settings = get_auto_settings()
-
-
-        # Stop immediately if AUTO is OFF
+        auto_settings = (
+            get_auto_settings()
+        )
 
         if not auto_settings.get(
             "enabled",
@@ -712,7 +809,6 @@ def wait_for_next_scan():
         ):
 
             return
-
 
         time.sleep(5)
 
@@ -729,38 +825,53 @@ def run_automatic_scanner():
         "🤖 Automatic Forex scanner is ready."
     )
 
+    if TEST_ONLY:
+
+        print(
+            "🧪 TEST MODE ACTIVE"
+        )
+
+        print(
+            "🚫 Automatic MT5 orders are DISABLED."
+        )
+
+    else:
+
+        print(
+            "⚠️ REAL TRADING MODE ACTIVE."
+        )
 
     while True:
 
         try:
 
-            # =============================================
-            # GET CURRENT AUTO SETTINGS
-            # =============================================
-
-            auto_settings = get_auto_settings()
-
-
-            auto_enabled = auto_settings.get(
-                "enabled",
-                False
+            auto_settings = (
+                get_auto_settings()
             )
 
-
-            auto_timeframe = auto_settings.get(
-                "timeframe",
-                TIMEFRAME
+            auto_enabled = (
+                auto_settings.get(
+                    "enabled",
+                    False
+                )
             )
 
-
-            selected_pairs = auto_settings.get(
-                "pairs",
-                []
+            auto_timeframe = (
+                auto_settings.get(
+                    "timeframe",
+                    TIMEFRAME
+                )
             )
 
+            selected_pairs = (
+                auto_settings.get(
+                    "pairs",
+                    []
+                )
+            )
 
             # =============================================
-            # AUTOMATIC MODE OFF
+            # AUTO OFF
             # =============================================
 
             if not auto_enabled:
@@ -769,9 +880,8 @@ def run_automatic_scanner():
 
                 continue
 
-
             # =============================================
-            # NO PAIRS SELECTED
+            # NO PAIRS
             # =============================================
 
             if not selected_pairs:
@@ -785,9 +895,8 @@ def run_automatic_scanner():
 
                 continue
 
-
             # =============================================
-            # AUTOMATIC MODE ON
+            # START SCAN
             # =============================================
 
             print(
@@ -809,6 +918,11 @@ def run_automatic_scanner():
             )
 
             print(
+                "🧪 Signal testing mode:"
+                f" {TEST_ONLY}"
+            )
+
+            print(
                 "Starting Forex market scan..."
             )
 
@@ -816,9 +930,8 @@ def run_automatic_scanner():
                 "===================================="
             )
 
-
             # =============================================
-            # SCAN ONLY SELECTED FOREX PAIRS
+            # SCAN SELECTED PAIRS
             # =============================================
 
             for pair in selected_pairs:
@@ -826,11 +939,12 @@ def run_automatic_scanner():
                 try:
 
                     # =====================================
-                    # CHECK AUTO STATUS AGAIN
+                    # CHECK AUTO STATUS
                     # =====================================
 
-                    auto_settings = get_auto_settings()
-
+                    auto_settings = (
+                        get_auto_settings()
+                    )
 
                     if not auto_settings.get(
                         "enabled",
@@ -843,16 +957,16 @@ def run_automatic_scanner():
 
                         break
 
-
                     # =====================================
-                    # CHECK CURRENT SELECTED PAIRS
+                    # CURRENT PAIRS
                     # =====================================
 
-                    current_pairs = auto_settings.get(
-                        "pairs",
-                        []
+                    current_pairs = (
+                        auto_settings.get(
+                            "pairs",
+                            []
+                        )
                     )
-
 
                     if pair not in current_pairs:
 
@@ -863,9 +977,8 @@ def run_automatic_scanner():
 
                         continue
 
-
                     # =====================================
-                    # GET CURRENT TIMEFRAME
+                    # CURRENT TIMEFRAME
                     # =====================================
 
                     auto_timeframe = (
@@ -875,12 +988,10 @@ def run_automatic_scanner():
                         )
                     )
 
-
                     print(
                         f"🔍 Analyzing {pair} | "
                         f"{auto_timeframe}"
                     )
-
 
                     # =====================================
                     # GET SIGNAL
@@ -896,7 +1007,6 @@ def run_automatic_scanner():
                         "NO TRADE"
                     )
 
-
                     print(
                         f"Result for {pair}: "
                         f"{signal} | "
@@ -910,28 +1020,23 @@ def run_automatic_scanner():
                         f"{result.get('confidence')}%"
                     )
 
-
                     # =====================================
                     # UNIQUE SIGNAL KEY
                     # =====================================
 
                     signal_key = (
-                        f"{pair}_{auto_timeframe}"
+                        f"{pair}_"
+                        f"{auto_timeframe}"
                     )
 
-
                     # =====================================
-                    # BUY OR SELL SIGNAL
+                    # BUY / SELL
                     # =====================================
 
                     if signal in [
-
                         "BUY",
-
                         "SELL"
-
                     ]:
-
 
                         previous_signal = (
                             LAST_SIGNAL.get(
@@ -939,20 +1044,18 @@ def run_automatic_scanner():
                             )
                         )
 
-
-                        # =================================
-                        # DUPLICATE SIGNAL PROTECTION
-                        # =================================
-
-                        if previous_signal == signal:
+                        if (
+                            previous_signal
+                            == signal
+                        ):
 
                             print(
-                                f"Duplicate {signal} "
-                                f"signal ignored for "
+                                f"Duplicate "
+                                f"{signal} signal "
+                                f"ignored for "
                                 f"{pair} | "
                                 f"{auto_timeframe}"
                             )
-
 
                         else:
 
@@ -962,10 +1065,9 @@ def run_automatic_scanner():
                                 f"{auto_timeframe}"
                             )
 
-
-                            # =============================
-                            # EXECUTE TRADE
-                            # =============================
+                            # =================================
+                            # EXECUTE / TEST TRADE
+                            # =================================
 
                             trade_success, trade_status = (
                                 execute_trade(
@@ -974,17 +1076,60 @@ def run_automatic_scanner():
                                 )
                             )
 
+                            # =================================
+                            # SIGNAL TEST MODE
+                            # =================================
 
-                            # =============================
-                            # TRADE SUCCESS
-                            # =============================
-
-                            if trade_success:
+                            if (
+                                trade_status
+                                == "SIGNAL_TEST_ONLY"
+                            ):
 
                                 LAST_SIGNAL[
                                     signal_key
                                 ] = signal
 
+                                message = format_signal(
+                                    result
+                                )
+
+                                message += (
+                                    "\n\n"
+                                    "🧪 SIGNAL TEST MODE\n\n"
+                                    "🚫 MT5 REAL TRADE: "
+                                    "NOT PLACED\n\n"
+                                    f"📊 Pair: {pair}\n"
+                                    f"⏱ Timeframe: "
+                                    f"{auto_timeframe}\n"
+                                    f"🎯 Entry: "
+                                    f"{result.get('entry')}\n"
+                                    f"🛑 SL: "
+                                    f"{result.get('stop_loss')}\n"
+                                    f"✅ TP: "
+                                    f"{result.get('take_profit')}\n"
+                                    f"🔥 Confidence: "
+                                    f"{result.get('confidence')}%"
+                                )
+
+                                send_telegram_message(
+                                    message
+                                )
+
+                                print(
+                                    f"🧪 TEST SIGNAL SENT "
+                                    f"TO TELEGRAM: "
+                                    f"{pair} {signal}"
+                                )
+
+                            # =================================
+                            # REAL TRADE SUCCESS
+                            # =================================
+
+                            elif trade_success:
+
+                                LAST_SIGNAL[
+                                    signal_key
+                                ] = signal
 
                                 print(
                                     f"✅ {signal} trade "
@@ -992,51 +1137,39 @@ def run_automatic_scanner():
                                     f"for {pair}"
                                 )
 
-
-                                message = format_signal(
-                                    result
+                                message = (
+                                    format_signal(
+                                        result
+                                    )
                                 )
-
 
                                 message += (
-
                                     "\n\n"
-
                                     "🤖 AUTOMATIC TRADE "
                                     "PLACED SUCCESSFULLY\n\n"
-
                                     f"📊 MT5 Symbol: "
                                     f"{convert_to_mt5_symbol(pair)}\n"
-
                                     f"⏱ Timeframe: "
                                     f"{auto_timeframe}\n"
-
                                     f"📦 Lot Size: "
                                     f"{TRADE_VOLUME}\n\n"
-
                                     "🛡 Trade Protection: "
                                     "ACTIVE\n"
-
                                     "🛑 Stop Loss: "
                                     "ATTACHED\n"
-
                                     "✅ Take Profit: "
                                     "ATTACHED\n"
-
                                     f"🔒 Maximum Open Trades: "
                                     f"{MAX_OPEN_TRADES}"
-
                                 )
-
 
                                 send_telegram_message(
                                     message
                                 )
 
-
-                            # =============================
+                            # =================================
                             # TRADE FAILED
-                            # =============================
+                            # =================================
 
                             else:
 
@@ -1045,7 +1178,6 @@ def run_automatic_scanner():
                                     f"for {pair}: "
                                     f"{trade_status}"
                                 )
-
 
                     # =====================================
                     # NO TRADE
@@ -1057,13 +1189,11 @@ def run_automatic_scanner():
                             signal_key
                         ] = None
 
-
                     # =====================================
                     # API PROTECTION
                     # =====================================
 
                     time.sleep(3)
-
 
                 except Exception as e:
 
@@ -1073,7 +1203,6 @@ def run_automatic_scanner():
                     )
 
                     time.sleep(3)
-
 
             # =============================================
             # SCAN COMPLETED
@@ -1091,20 +1220,19 @@ def run_automatic_scanner():
                 "===================================="
             )
 
-
         except Exception as e:
 
             print(
                 f"Automatic scanner error: {e}"
             )
 
-
         # =============================================
         # WAIT FOR NEXT SCAN
         # =============================================
 
-        auto_settings = get_auto_settings()
-
+        auto_settings = (
+            get_auto_settings()
+        )
 
         if auto_settings.get(
             "enabled",
@@ -1116,9 +1244,7 @@ def run_automatic_scanner():
                 f"before next scan..."
             )
 
-
             wait_for_next_scan()
-
 
         else:
 
@@ -1148,6 +1274,10 @@ if __name__ == "__main__":
     )
 
     print(
+        f"TEST ONLY: {TEST_ONLY}"
+    )
+
+    print(
         f"Trade Volume: "
         f"{TRADE_VOLUME}"
     )
@@ -1167,73 +1297,67 @@ if __name__ == "__main__":
         f"{SCAN_INTERVAL} seconds"
     )
 
+    if TEST_ONLY:
+
+        print(
+            "🧪 SAFE TEST MODE: "
+            "NO MT5 ORDERS WILL BE PLACED."
+        )
+
+    else:
+
+        print(
+            "⚠️ REAL MT5 TRADING IS ENABLED."
+        )
+
     print(
         "===================================="
     )
 
-
     # =====================================================
-    # START HEALTH SERVER
+    # HEALTH SERVER
     # =====================================================
 
     health_thread = threading.Thread(
-
         target=run_health_server,
-
         daemon=True
-
     )
 
-
     health_thread.start()
-
 
     print(
         "✅ Health server started."
     )
 
-
     # =====================================================
-    # START AUTOMATIC SCANNER
+    # AUTOMATIC SCANNER
     # =====================================================
 
     scanner_thread = threading.Thread(
-
         target=run_automatic_scanner,
-
         daemon=True
-
     )
 
-
     scanner_thread.start()
-
 
     print(
         "✅ Automatic Forex scanner started."
     )
 
-
     # =====================================================
-    # START TELEGRAM BOT
+    # TELEGRAM BOT
     # =====================================================
 
     telegram_thread = threading.Thread(
-
         target=run_telegram_bot,
-
         daemon=True
-
     )
 
-
     telegram_thread.start()
-
 
     print(
         "✅ Telegram control bot started."
     )
-
 
     # =====================================================
     # KEEP BOT RUNNING
