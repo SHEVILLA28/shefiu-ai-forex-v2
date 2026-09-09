@@ -1,532 +1,233 @@
 import os
-import time
-import threading
+import asyncio
 from datetime import datetime, timezone
 
-from market_session import is_forex_market_open
-
-import requests
 import pandas as pd
+from metaapi_cloud_sdk import MetaApi
 
 
 # =========================================================
-# CONFIGURATION
+# SHEFIU AI FOREX V2
+# MT5 / METAAPI MARKET DATA ENGINE
 # =========================================================
 
-API_KEY = os.getenv("TWELVE_DATA_API_KEY")
+METAAPI_TOKEN = os.getenv("METAAPI_TOKEN")
+METAAPI_ACCOUNT_ID = os.getenv("METAAPI_ACCOUNT_ID")
 
-MIN_CANDLES = 80
-MAX_DATA_AGE_MINUTES = 15
+MIN_CANDLES = 100
+DEFAULT_HISTORY = 300
+SYMBOL_CACHE_TTL = 900
 
+TIMEFRAME_MAP = {
+    "1M": "1m",
+    "5M": "5m",
+    "15M": "15m",
+    "30M": "30m",
+    "1H": "1h",
+}
 
-# =========================================================
-# TWELVE DATA RATE LIMIT + CACHE PROTECTION
-# =========================================================
+RESAMPLED_TIMEFRAMES = {
+    "2M": "2min",
+    "3M": "3min",
+}
 
-DATA_REQUEST_LOCK = threading.Lock()
-
-LAST_DATA_REQUEST_TIME = 0.0
-
-MIN_REQUEST_INTERVAL_SECONDS = 15
-
-DATA_CACHE = {}
-
-CACHE_SECONDS = 60
-
-
-def market_data_request(url, params):
-
-    global LAST_DATA_REQUEST_TIME
-
-    cache_key = (
-        params.get("symbol"),
-        params.get("interval"),
-        params.get("outputsize"),
-    )
-
-    now = time.monotonic()
-
-    cached = DATA_CACHE.get(cache_key)
-
-    if cached:
-
-        cached_time, cached_data = cached
-
-        if now - cached_time < CACHE_SECONDS:
-
-            print(f"Using cached data for {params.get('symbol')}")
-
-            return cached_data
-
-    with DATA_REQUEST_LOCK:
-
-        now = time.monotonic()
-
-        cached = DATA_CACHE.get(cache_key)
-
-        if cached:
-
-            cached_time, cached_data = cached
-
-            if now - cached_time < CACHE_SECONDS:
-
-                print(f"Using cached data for {params.get('symbol')}")
-
-                return cached_data
-
-        elapsed = now - LAST_DATA_REQUEST_TIME
-
-        if elapsed < MIN_REQUEST_INTERVAL_SECONDS:
-
-            wait_time = MIN_REQUEST_INTERVAL_SECONDS - elapsed
-
-            print(
-                f"Waiting {wait_time:.0f} seconds "
-                f"before next API request..."
-            )
-
-            time.sleep(wait_time)
-
-        for attempt in range(2):
-
-            try:
-
-                LAST_DATA_REQUEST_TIME = time.monotonic()
-
-                response = requests.get(
-                    url,
-                    params=params,
-                    timeout=20
-                )
-
-                if response.status_code == 429:
-
-                    if attempt == 0:
-
-                        print(
-                            "Twelve Data rate limit reached. "
-                            "Waiting 60 seconds..."
-                        )
-
-                        time.sleep(60)
-
-                        continue
-
-                    return {
-                        "status": "error",
-                        "message": "Rate limit reached. Please wait and try again."
-                    }
-
-                response.raise_for_status()
-
-                data = response.json()
-
-                if (
-                    isinstance(data, dict)
-                    and data.get("status") != "error"
-                ):
-
-                    DATA_CACHE[cache_key] = (
-                        time.monotonic(),
-                        data
-                    )
-
-                return data
-
-            except requests.RequestException:
-
-                if attempt == 0:
-
-                    print(
-                        "Market request failed. "
-                        "Retrying in 15 seconds..."
-                    )
-
-                    time.sleep(15)
-
-                    continue
-
-                return {
-                    "status": "error",
-                    "message": "Market data request failed."
-                }
-
-        return {
-            "status": "error",
-            "message": "Market data temporarily unavailable"
-        }
-
-
-# =========================================================
-# TIMEFRAME SETTINGS
-# =========================================================
-
-TIMEFRAME_SETTINGS = {
-
-    "1M": {
-        "api_interval": "1min",
-        "minutes": 1,
-        "outputsize": 160,
-    },
-
-    "2M": {
-        "api_interval": "1min",
-        "minutes": 2,
-        "outputsize": 220,
-    },
-
-    "3M": {
-        "api_interval": "1min",
-        "minutes": 3,
-        "outputsize": 280,
-    },
-
-    "5M": {
-        "api_interval": "5min",
-        "minutes": 5,
-        "outputsize": 140,
-    },
+_SYMBOL_CACHE = {
+    "loaded_at": 0.0,
+    "symbols": [],
 }
 
 
 # =========================================================
-# ALLOWED FOREX MARKETS
+# NORMALIZE PAIR
 # =========================================================
 
-DISPLAY_PAIRS = {
-
-    "EUR/USD": "EUR/USD",
-    "GBP/USD": "GBP/USD",
-    "USD/JPY": "USD/JPY",
-    "USD/CHF": "USD/CHF",
-    "AUD/USD": "AUD/USD",
-    "USD/CAD": "USD/CAD",
-    "NZD/USD": "NZD/USD",
-    "XAU/USD": "XAU/USD",
-    "EUR/GBP": "EUR/GBP",
-    "CHF/JPY": "CHF/JPY",
-    "AUD/JPY": "AUD/JPY",
-    "EUR/JPY": "EUR/JPY",
-    "GBP/JPY": "GBP/JPY",
-    "USD/SGD": "USD/SGD",
-}
+def normalize_pair(pair):
+    return str(pair or "").upper().replace("/", "").replace(" ", "")
 
 
 # =========================================================
-# NO TRADE RESULT
+# METAAPI CONNECTION
 # =========================================================
 
-def no_trade(
-    pair,
-    reason="Conditions are not strong enough",
-    timeframe=None
-):
+async def _get_account():
+    if not METAAPI_TOKEN:
+        raise RuntimeError("METAAPI_TOKEN is missing in Render.")
 
-    return {
-        "pair": DISPLAY_PAIRS.get(pair, pair),
-        "signal": "NO TRADE",
-        "entry": None,
-        "take_profit": None,
-        "stop_loss": None,
-        "trend": "WAIT",
-        "rsi": None,
-        "ema50": None,
-        "macd": None,
-        "macd_signal": None,
-        "support": None,
-        "resistance": None,
-        "confidence": 0,
-        "reason": reason,
-        "timeframe": timeframe,
-    }
+    if not METAAPI_ACCOUNT_ID:
+        raise RuntimeError("METAAPI_ACCOUNT_ID is missing in Render.")
 
-
-# =========================================================
-# EMA
-# =========================================================
-
-def ema(series, period):
-
-    return series.ewm(
-        span=period,
-        adjust=False
-    ).mean()
-
-
-# =========================================================
-# RSI
-# =========================================================
-
-def rsi(series, period=14):
-
-    delta = series.diff()
-
-    gain = delta.clip(lower=0)
-
-    loss = -delta.clip(upper=0)
-
-    avg_gain = gain.ewm(
-        alpha=1 / period,
-        adjust=False,
-        min_periods=period
-    ).mean()
-
-    avg_loss = loss.ewm(
-        alpha=1 / period,
-        adjust=False,
-        min_periods=period
-    ).mean()
-
-    avg_loss = avg_loss.replace(0, pd.NA)
-
-    rs = avg_gain / avg_loss
-
-    result = 100 - (100 / (1 + rs))
-
-    return result.fillna(100)
-
-
-# =========================================================
-# MACD
-# =========================================================
-
-def macd(series):
-
-    ema12 = ema(series, 12)
-
-    ema26 = ema(series, 26)
-
-    macd_line = ema12 - ema26
-
-    signal_line = ema(macd_line, 9)
-
-    histogram = macd_line - signal_line
-
-    return macd_line, signal_line, histogram
-
-
-# =========================================================
-# PIP SIZE
-# =========================================================
-
-def pip_size(pair):
-
-    normalized = DISPLAY_PAIRS.get(
-        pair,
-        pair
-    ).upper()
-
-    if "XAU/" in normalized:
-        return 0.01
-
-    if "JPY" in normalized:
-        return 0.01
-
-    return 0.0001
-
-
-# =========================================================
-# NORMALIZE TIMEFRAME
-# =========================================================
-
-def normalize_timeframe(timeframe):
-
-    if timeframe is None:
-        return "5M"
-
-    value = str(timeframe).strip().upper()
-
-    aliases = {
-
-        "1": "1M",
-        "1M": "1M",
-        "1 MIN": "1M",
-        "1MIN": "1M",
-
-        "2": "2M",
-        "2M": "2M",
-        "2 MIN": "2M",
-        "2MIN": "2M",
-
-        "3": "3M",
-        "3M": "3M",
-        "3 MIN": "3M",
-        "3MIN": "3M",
-
-        "5": "5M",
-        "5M": "5M",
-        "5 MIN": "5M",
-        "5MIN": "5M",
-    }
-
-    return aliases.get(value, "5M")
-
-
-# =========================================================
-# RESAMPLE MINUTES
-# =========================================================
-
-def resample_minutes(df, minutes):
-
-    if minutes == 1:
-        return df
-
-    working = (
-        df.set_index("datetime")
-        .sort_index()
+    api = MetaApi(METAAPI_TOKEN)
+    account = await api.metatrader_account_api.get_account(
+        METAAPI_ACCOUNT_ID
     )
 
-    rule = f"{minutes}min"
+    return api, account
 
-    resampled = (
-        working.resample(
-            rule,
-            label="right",
-            closed="right"
+
+async def _get_rpc_connection():
+    api, account = await _get_account()
+
+    connection = account.get_rpc_connection()
+    await connection.connect()
+    await connection.wait_synchronized()
+
+    return api, account, connection
+
+
+# =========================================================
+# SYMBOL DISCOVERY
+# =========================================================
+
+async def _get_symbols_async():
+    now = asyncio.get_running_loop().time()
+
+    if (
+        _SYMBOL_CACHE["symbols"]
+        and now - _SYMBOL_CACHE["loaded_at"] < SYMBOL_CACHE_TTL
+    ):
+        return _SYMBOL_CACHE["symbols"]
+
+    api, account, connection = await _get_rpc_connection()
+
+    try:
+        symbols = await connection.get_symbols()
+        symbols = [str(symbol) for symbol in symbols]
+
+        _SYMBOL_CACHE["symbols"] = symbols
+        _SYMBOL_CACHE["loaded_at"] = now
+
+        print(
+            f"MetaAPI symbols loaded: {len(symbols)}"
         )
-        .agg(
+
+        return symbols
+    finally:
+        try:
+            await connection.close()
+        except Exception:
+            pass
+        try:
+            await api.close()
+        except Exception:
+            pass
+
+
+async def _resolve_symbol_async(pair):
+    base = normalize_pair(pair)
+    symbols = await _get_symbols_async()
+
+    # Exact match first.
+    for symbol in symbols:
+        if symbol.upper() == base:
+            return symbol
+
+    # Common broker suffix/prefix variations.
+    candidates = []
+    for symbol in symbols:
+        normalized = normalize_pair(symbol)
+        if normalized.startswith(base):
+            candidates.append(symbol)
+
+    if candidates:
+        # Prefer the shortest matching broker symbol, e.g. EURUSDm
+        # over a longer synthetic symbol.
+        candidates.sort(key=lambda value: (len(value), value))
+        return candidates[0]
+
+    # Gold/XAUUSD broker naming can vary considerably.
+    if base == "XAUUSD":
+        gold_candidates = []
+        for symbol in symbols:
+            upper = symbol.upper()
+            if "XAUUSD" in upper or upper.startswith("GOLD"):
+                gold_candidates.append(symbol)
+
+        if gold_candidates:
+            gold_candidates.sort(key=lambda value: (len(value), value))
+            return gold_candidates[0]
+
+    raise RuntimeError(
+        f"MetaAPI could not find broker symbol for {pair}. "
+        "Use the MetaAPI symbol list to verify the broker name."
+    )
+
+
+def resolve_symbol(pair):
+    return asyncio.run(_resolve_symbol_async(pair))
+
+
+# =========================================================
+# FETCH HISTORICAL CANDLES
+# =========================================================
+
+async def _fetch_candles_async(pair, timeframe, limit):
+    api, account, connection = await _get_rpc_connection()
+
+    try:
+        symbol = await _resolve_symbol_async(pair)
+
+        print(
+            f"MetaAPI market data: {pair} -> {symbol} | {timeframe}"
+        )
+
+        # MetaAPI historical candles are requested before the current time.
+        candles = await account.get_historical_candles(
+            symbol=symbol,
+            timeframe=timeframe,
+            start_time=datetime.now(timezone.utc),
+            limit=limit,
+        )
+
+        return candles, symbol
+    finally:
+        try:
+            await connection.close()
+        except Exception:
+            pass
+        try:
+            await api.close()
+        except Exception:
+            pass
+
+
+def _candles_to_dataframe(candles):
+    if not candles:
+        return None, "MetaAPI returned no candles."
+
+    rows = []
+
+    for candle in candles:
+        if not isinstance(candle, dict):
+            continue
+
+        rows.append(
             {
-                "open": "first",
-                "high": "max",
-                "low": "min",
-                "close": "last",
+                "datetime": candle.get("time")
+                or candle.get("brokerTime"),
+                "open": candle.get("open"),
+                "high": candle.get("high"),
+                "low": candle.get("low"),
+                "close": candle.get("close"),
+                "volume": candle.get("tickVolume")
+                or candle.get("volume"),
             }
         )
-        .dropna()
-        .reset_index()
-    )
-
-    return resampled
-
-
-# =========================================================
-# MAIN SIGNAL FUNCTION
-# =========================================================
-
-def get_signal(pair, timeframe="5M"):
-
-    if not API_KEY:
-
-        raise RuntimeError(
-            "TWELVE_DATA_API_KEY is missing in Render Environment"
-        )
-
-    pair = pair.strip().upper()
-
-    display_pair = DISPLAY_PAIRS.get(pair)
-
-    if not display_pair:
-
-        return no_trade(
-            pair,
-            "Pair is not in the allowed market list",
-            timeframe
-        )
-
-    timeframe = normalize_timeframe(timeframe)
-
-    settings = TIMEFRAME_SETTINGS[timeframe]
-
-    minutes = settings["minutes"]
-
-    # MARKET CLOSED CHECK
-
-    now = datetime.now(timezone.utc)
-
-    if not is_forex_market_open():
-
-        return no_trade(
-            display_pair,
-            "Market closed",
-            timeframe
-        )
-
-    # TWELVE DATA REQUEST
-
-    url = "https://api.twelvedata.com/time_series"
-
-    params = {
-
-        "symbol": display_pair,
-
-        "interval": settings["api_interval"],
-
-        "outputsize": settings["outputsize"],
-
-        "apikey": API_KEY,
-    }
-
-    data = market_data_request(url, params)
-
-    # API ERROR
-
-    if not isinstance(data, dict):
-
-        return no_trade(
-            display_pair,
-            "Invalid market data response",
-            timeframe
-        )
-
-    if data.get("status") == "error":
-
-        message = data.get(
-            "message",
-            "Market data temporarily unavailable"
-        )
-
-        return no_trade(
-            display_pair,
-            f"Market data unavailable: {message}",
-            timeframe
-        )
-
-    rows = data.get("values") or []
-
-    if len(rows) < MIN_CANDLES:
-
-        return no_trade(
-            display_pair,
-            "Not enough market data",
-            timeframe
-        )
-
-    # DATAFRAME
 
     df = pd.DataFrame(rows)
 
-    required = {
-        "datetime",
-        "open",
-        "high",
-        "low",
-        "close",
-    }
-
-    if not required.issubset(df.columns):
-
-        return no_trade(
-            display_pair,
-            "Incomplete market data",
-            timeframe
-        )
+    if df.empty:
+        return None, "MetaAPI candle data could not be converted to a dataframe."
 
     df["datetime"] = pd.to_datetime(
         df["datetime"],
+        errors="coerce",
         utc=True,
-        errors="coerce"
     )
 
-    for column in [
-        "open",
-        "high",
-        "low",
-        "close",
-    ]:
-
+    for column in ["open", "high", "low", "close"]:
         df[column] = pd.to_numeric(
             df[column],
-            errors="coerce"
+            errors="coerce",
         )
 
     df = df.dropna(
@@ -541,334 +242,133 @@ def get_signal(pair, timeframe="5M"):
 
     df = (
         df.sort_values("datetime")
+        .drop_duplicates(subset=["datetime"])
         .reset_index(drop=True)
     )
 
-    # BUILD 2M / 3M CANDLES
+    return df, None
 
-    if minutes in {2, 3}:
 
-        df = resample_minutes(df, minutes)
+# =========================================================
+# RESAMPLE 1-MINUTE DATA FOR 2M / 3M
+# =========================================================
 
-    if len(df) < MIN_CANDLES:
+def _resample(df, timeframe):
+    rule = RESAMPLED_TIMEFRAMES[timeframe]
 
-        return no_trade(
-            display_pair,
-            "Not enough valid timeframe candles",
-            timeframe
+    data = df.copy().set_index("datetime")
+
+    result = (
+        data.resample(rule)
+        .agg(
+            {
+                "open": "first",
+                "high": "max",
+                "low": "min",
+                "close": "last",
+                "volume": "sum",
+            }
         )
-
-    # DATA FRESHNESS
-
-    latest_time = (
-        df["datetime"]
-        .iloc[-1]
-        .to_pydatetime()
+        .dropna(subset=["open", "high", "low", "close"])
+        .reset_index()
     )
 
-    age_minutes = (
-        now - latest_time
-    ).total_seconds() / 60
+    return result
 
-    if age_minutes > MAX_DATA_AGE_MINUTES:
 
-        return no_trade(
-            display_pair,
-            "Market data is stale / market may be closed",
-            timeframe
-        )
+# =========================================================
+# PUBLIC MARKET DATA FUNCTION
+# =========================================================
 
-    # PRICE DATA
+def get_market_data(pair, timeframe="5M"):
+    timeframe = str(timeframe or "5M").upper()
 
-    close = df["close"]
-
-    high = df["high"]
-
-    low = df["low"]
-
-    # INDICATORS
-
-    df["ema20"] = ema(close, 20)
-
-    df["ema50"] = ema(close, 50)
-
-    df["rsi"] = rsi(close, 14)
-
-    (
-        df["macd"],
-        df["macd_signal"],
-        df["macd_hist"]
-    ) = macd(close)
-
-    latest = df.iloc[-1]
-
-    previous = df.iloc[-2]
-
-    price = float(latest["close"])
-
-    ema20 = float(latest["ema20"])
-
-    ema50 = float(latest["ema50"])
-
-    rsi_value = float(latest["rsi"])
-
-    macd_value = float(latest["macd"])
-
-    macd_signal_value = float(
-        latest["macd_signal"]
-    )
-
-    # SUPPORT / RESISTANCE
-
-    support = float(low.tail(20).min())
-
-    resistance = float(high.tail(20).max())
-
-    # SCORES
-
-    buy_score = 0
-
-    sell_score = 0
-
-    # TREND
-
-    if (
-        price > ema50
-        and ema20 > ema50
-    ):
-
-        buy_score += 2
-
-        trend = "BUY"
-
-    elif (
-        price < ema50
-        and ema20 < ema50
-    ):
-
-        sell_score += 2
-
-        trend = "SELL"
-
+    if timeframe in RESAMPLED_TIMEFRAMES:
+        source_timeframe = "1m"
+        limit = 350
     else:
+        source_timeframe = TIMEFRAME_MAP.get(timeframe)
+        limit = DEFAULT_HISTORY
 
-        trend = "SIDEWAYS"
+    if source_timeframe is None:
+        return None, f"Unsupported MT5 timeframe: {timeframe}"
 
-    # EMA MOMENTUM
-
-    previous_ema20 = float(previous["ema20"])
-
-    previous_ema50 = float(previous["ema50"])
-
-    if (
-        ema20 > previous_ema20
-        and ema50 >= previous_ema50
-    ):
-
-        buy_score += 1
-
-    elif (
-        ema20 < previous_ema20
-        and ema50 <= previous_ema50
-    ):
-
-        sell_score += 1
-
-    # RSI
-
-    if 52 <= rsi_value < 70:
-
-        buy_score += 1
-
-    elif 30 < rsi_value <= 48:
-
-        sell_score += 1
-
-    # MACD
-
-    previous_macd = float(previous["macd"])
-
-    previous_signal = float(
-        previous["macd_signal"]
-    )
-
-    if (
-        macd_value > macd_signal_value
-        and previous_macd <= previous_signal
-    ):
-
-        buy_score += 2
-
-    elif (
-        macd_value < macd_signal_value
-        and previous_macd >= previous_signal
-    ):
-
-        sell_score += 2
-
-    elif macd_value > macd_signal_value:
-
-        buy_score += 1
-
-    elif macd_value < macd_signal_value:
-
-        sell_score += 1
-
-    # SUPPORT / RESISTANCE CONFIRMATION
-
-    pip = pip_size(display_pair)
-
-    near_support = (
-        price <= support + (15 * pip)
-    )
-
-    near_resistance = (
-        price >= resistance - (15 * pip)
-    )
-
-    if near_support and price > support:
-
-        buy_score += 1
-
-    if near_resistance and price < resistance:
-
-        sell_score += 1
-
-    # BUY SIGNAL
-
-    if (
-        buy_score >= 4
-        and buy_score > sell_score
-        and not near_resistance
-    ):
-
-        signal = "BUY"
-
-        confidence = min(
-            95,
-            55 + buy_score * 7
+    try:
+        candles, symbol = asyncio.run(
+            _fetch_candles_async(
+                pair,
+                source_timeframe,
+                limit,
+            )
         )
 
-        trend = "BUY"
+        df, error_message = _candles_to_dataframe(candles)
 
-    # SELL SIGNAL
+        if df is None:
+            return None, error_message
 
-    elif (
-        sell_score >= 4
-        and sell_score > buy_score
-        and not near_support
-    ):
+        if timeframe in RESAMPLED_TIMEFRAMES:
+            df = _resample(df, timeframe)
 
-        signal = "SELL"
-
-        confidence = min(
-            95,
-            55 + sell_score * 7
+        print(
+            f"MT5 candles received: {pair} | {symbol} | "
+            f"{timeframe} | {len(df)} candles"
         )
 
-        trend = "SELL"
+        if len(df) < MIN_CANDLES:
+            return None, (
+                f"Not enough MT5 candles for {pair} {timeframe}. "
+                f"Received {len(df)}, need {MIN_CANDLES}."
+            )
 
-    # NO TRADE
+        return df, None
 
-    else:
+    except Exception as e:
+        message = str(e)
 
-        return {
+        # MetaAPI currently documents historical candle RPC support as G1-only.
+        if "historical" in message.lower() or "not supported" in message.lower():
+            message = (
+                "MetaAPI historical candles are unavailable for this account/API "
+                "configuration. The scanner will not use another market-data provider. "
+                f"MetaAPI error: {message}"
+            )
 
-            **no_trade(
-                display_pair,
-                "Indicators are not strongly aligned; WAIT",
-                timeframe
-            ),
-
-            "entry": round(price, 5),
-
-            "trend": trend,
-
-            "rsi": round(rsi_value, 2),
-
-            "ema50": round(ema50, 5),
-
-            "macd": round(macd_value, 6),
-
-            "macd_signal": round(
-                macd_signal_value,
-                6
-            ),
-
-            "support": round(support, 5),
-
-            "resistance": round(resistance, 5),
-
-            "confidence": 0,
-        }
-
-    # TAKE PROFIT / STOP LOSS
-
-    tp_distance = 50 * pip
-
-    sl_distance = 25 * pip
-
-    if signal == "BUY":
-
-        take_profit = round(
-            price + tp_distance,
-            5
+        print(
+            f"MT5 market-data error for {pair} {timeframe}: {message}"
         )
 
-        stop_loss = round(
-            price - sl_distance,
-            5
-        )
+        return None, message
 
-    else:
 
-        take_profit = round(
-            price - tp_distance,
-            5
-        )
+# =========================================================
+# CURRENT PRICE
+# =========================================================
 
-        stop_loss = round(
-            price + sl_distance,
-            5
-        )
+async def _get_price_async(pair):
+    api, account, connection = await _get_rpc_connection()
 
-    # FINAL RESULT
+    try:
+        symbol = await _resolve_symbol_async(pair)
+        price = await connection.get_symbol_price(symbol=symbol)
+        return price, symbol
+    finally:
+        try:
+            await connection.close()
+        except Exception:
+            pass
+        try:
+            await api.close()
+        except Exception:
+            pass
 
-    return {
 
-        "pair": display_pair,
+def get_current_price(pair):
+    return asyncio.run(_get_price_async(pair))
 
-        "signal": signal,
 
-        "entry": round(price, 5),
+# =========================================================
+# MT5 SYMBOL HELPER FOR TRADE EXECUTION
+# =========================================================
 
-        "take_profit": take_profit,
-
-        "stop_loss": stop_loss,
-
-        "trend": trend,
-
-        "rsi": round(rsi_value, 2),
-
-        "ema50": round(ema50, 5),
-
-        "macd": round(macd_value, 6),
-
-        "macd_signal": round(
-            macd_signal_value,
-            6
-        ),
-
-        "support": round(support, 5),
-
-        "resistance": round(resistance, 5),
-
-        "confidence": confidence,
-
-        "reason": (
-            "EMA + EMA momentum + RSI + "
-            "MACD + support/resistance confirmations"
-        ),
-
-        "timeframe": timeframe,
-                }
+resolve_mt5_symbol = resolve_symbol
