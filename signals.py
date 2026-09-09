@@ -1200,8 +1200,16 @@ def get_signal(
         if passed
     )
 
+    # =====================================================
+    # DETAILED 9-CONDITION BUY ANALYSIS
+    # Keep the original Render-style PASS / FAIL display.
+    # =====================================================
+    print(f"📋 {pair} BUY ANALYSIS")
+    for name, passed in buy_checks.items():
+        status = "PASS ✅" if passed else "FAIL ❌"
+        print(f"{name}: {status}")
     print(
-        f"🔎 {pair} BUY score: "
+        f"📊 BUY SCORE: "
         f"{buy_score}/{TOTAL_SIGNAL_CONDITIONS}"
     )
 
@@ -1367,8 +1375,16 @@ def get_signal(
         if passed
     )
 
+    # =====================================================
+    # DETAILED 9-CONDITION SELL ANALYSIS
+    # Keep the original Render-style PASS / FAIL display.
+    # =====================================================
+    print(f"📋 {pair} SELL ANALYSIS")
+    for name, passed in sell_checks.items():
+        status = "PASS ✅" if passed else "FAIL ❌"
+        print(f"{name}: {status}")
     print(
-        f"🔎 {pair} SELL score: "
+        f"📊 SELL SCORE: "
         f"{sell_score}/{TOTAL_SIGNAL_CONDITIONS}"
     )
 
